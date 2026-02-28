@@ -354,7 +354,8 @@ body {
     width: 100%;
     max-width: 500px;
     max-height: 90vh;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 }
 
 .modal-header {
@@ -385,6 +386,9 @@ body {
 
 .modal-body {
     padding: 16px;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 /* 表单 */
@@ -503,6 +507,7 @@ body {
     gap: 12px;
     padding: 16px;
     border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
 }
 
 /* 打卡记录 */
@@ -879,6 +884,7 @@ body {
 /* 大号弹窗样式 */
 .modal-large {
     max-width: 900px;
+    max-height: 90vh;
 }
 
 /* 表单分组和两列布局 */
@@ -916,9 +922,16 @@ body {
 
 /* 响应式布局 */
 @media (max-width: 768px) {
+    .modal {
+        max-width: 95vw;
+        max-height: 95vh;
+        margin: 10px;
+    }
+
     .modal-large {
         max-width: 95vw;
         max-height: 95vh;
+        margin: 10px;
     }
 
     .form-row {
@@ -928,6 +941,24 @@ body {
 
     .modal-body {
         padding: 12px;
+    }
+
+    .modal-footer {
+        padding: 12px;
+    }
+
+    .form-card {
+        padding: 16px;
+    }
+
+    .form-card-header {
+        gap: 10px;
+    }
+
+    .form-card-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
     }
 }
 
@@ -1203,4 +1234,572 @@ body {
     padding: 24px;
     color: var(--text-secondary);
     font-size: 14px;
+}
+
+/* ==================== 用户表单卡片样式 ==================== */
+
+/* 表单区域卡片 */
+.form-card {
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.form-card:last-child {
+    margin-bottom: 0;
+}
+
+.form-card:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    border-color: var(--text-muted);
+}
+
+/* 渐变卡片变体 */
+.form-card-gradient-blue {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.1) 100%);
+    border: 1px solid rgba(102, 126, 234, 0.3);
+}
+
+.form-card-gradient-pink {
+    background: linear-gradient(135deg, rgba(240, 147, 251, 0.15) 0%, rgba(245, 87, 108, 0.1) 100%);
+    border: 1px solid rgba(240, 147, 251, 0.3);
+}
+
+.form-card-gradient-cyan {
+    background: linear-gradient(135deg, rgba(79, 172, 254, 0.15) 0%, rgba(0, 242, 254, 0.1) 100%);
+    border: 1px solid rgba(79, 172, 254, 0.3);
+}
+
+.form-card-gradient-orange {
+    background: linear-gradient(135deg, rgba(250, 112, 154, 0.15) 0%, rgba(254, 225, 64, 0.1) 100%);
+    border: 1px solid rgba(250, 112, 154, 0.3);
+}
+
+/* 表单卡片标题 */
+.form-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.form-card-icon {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-hover) 100%);
+    border-radius: 8px;
+    font-size: 18px;
+    box-shadow: 0 2px 8px rgba(35, 134, 54, 0.3);
+}
+
+.form-card-gradient-blue .form-card-icon {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.form-card-gradient-pink .form-card-icon {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    box-shadow: 0 2px 8px rgba(240, 147, 251, 0.3);
+}
+
+.form-card-gradient-cyan .form-card-icon {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    box-shadow: 0 2px 8px rgba(79, 172, 254, 0.3);
+}
+
+.form-card-gradient-orange .form-card-icon {
+    background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+    box-shadow: 0 2px 8px rgba(250, 112, 154, 0.3);
+}
+
+.form-card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.form-card-description {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+/* 配置选项卡片 */
+.config-option-card {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 12px;
+    transition: all 0.2s ease;
+}
+
+.config-option-card:hover {
+    border-color: var(--text-secondary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.config-option-card.active {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 1px var(--accent-color);
+}
+
+/* 选项卡片头部 */
+.config-option-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.config-option-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.config-option-badge {
+    padding: 2px 8px;
+    background-color: var(--bg-tertiary);
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* 快速选择按钮组 */
+.quick-select-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
+.quick-select-btn {
+    padding: 6px 12px;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.quick-select-btn:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--text-muted);
+}
+
+.quick-select-btn.active {
+    background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-hover) 100%);
+    border-color: transparent;
+    color: white;
+}
+
+/* 提示信息卡片 */
+.info-card {
+    display: flex;
+    gap: 12px;
+    padding: 14px;
+    background: linear-gradient(135deg, rgba(35, 134, 54, 0.1) 0%, rgba(46, 160, 67, 0.05) 100%);
+    border: 1px solid rgba(35, 134, 54, 0.3);
+    border-radius: 8px;
+    margin-bottom: 16px;
+}
+
+.info-card.info {
+    background: linear-gradient(135deg, rgba(79, 172, 254, 0.1) 0%, rgba(0, 242, 254, 0.05) 100%);
+    border-color: rgba(79, 172, 254, 0.3);
+}
+
+.info-card.warning {
+    background: linear-gradient(135deg, rgba(210, 153, 34, 0.1) 0%, rgba(241, 196, 15, 0.05) 100%);
+    border-color: rgba(210, 153, 34, 0.3);
+}
+
+.info-card-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.info-card-content {
+    flex: 1;
+}
+
+.info-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.info-card-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+/* 分组标签样式 */
+.group-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 4px;
+    background-color: var(--bg-tertiary);
+    border-radius: 8px;
+}
+
+.group-tab {
+    flex: 1;
+    padding: 10px 16px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.group-tab:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-hover);
+}
+
+.group-tab.active {
+    background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-hover) 100%);
+    color: white;
+    font-weight: 500;
+    box-shadow: 0 2px 8px rgba(35, 134, 54, 0.3);
+}
+
+/* 开关卡片 */
+.switch-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    transition: all 0.2s ease;
+}
+
+.switch-card:hover {
+    border-color: var(--text-muted);
+}
+
+.switch-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.switch-card-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.switch-card-description {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* 开关样式 */
+.switch {
+    position: relative;
+    width: 48px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.switch-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    transition: all 0.3s ease;
+    border-radius: 24px;
+}
+
+.switch-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 2px;
+    bottom: 2px;
+    background-color: var(--text-muted);
+    transition: all 0.3s ease;
+    border-radius: 50%;
+}
+
+.switch input:checked + .switch-slider {
+    background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-hover) 100%);
+    border-color: transparent;
+}
+
+.switch input:checked + .switch-slider:before {
+    transform: translateX(24px);
+    background-color: white;
+}
+
+/* 字段组 */
+.field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.field-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+/* 响应式适配 */
+@media (max-width: 640px) {
+    .field-row {
+        grid-template-columns: 1fr;
+    }
+
+    .quick-select-group {
+        gap: 6px;
+    }
+
+    .quick-select-btn {
+        padding: 5px 10px;
+        font-size: 11px;
+    }
+}
+
+/* ==================== 增强动画效果 ==================== */
+
+/* 表单卡片进入动画 */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.form-card {
+    animation: fadeInUp 0.4s ease-out backwards;
+}
+
+.form-card:nth-child(1) { animation-delay: 0.05s; }
+.form-card:nth-child(2) { animation-delay: 0.1s; }
+.form-card:nth-child(3) { animation-delay: 0.15s; }
+.form-card:nth-child(4) { animation-delay: 0.2s; }
+
+/* 配置选项卡片动画 */
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.config-option-card {
+    animation: slideInRight 0.3s ease-out backwards;
+}
+
+/* 表单输入框增强焦点效果 */
+.form-input:focus,
+.form-textarea:focus,
+.form-select:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(35, 134, 54, 0.15);
+    outline: none;
+}
+
+/* 按钮点击波纹效果 */
+.btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.btn:active::before {
+    width: 300px;
+    height: 300px;
+}
+
+/* 模态框背景模糊增强 */
+.modal-overlay {
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+/* 滚动条美化 */
+.modal::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar,
+select::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.modal::-webkit-scrollbar-track,
+.modal-body::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+    border-radius: 3px;
+}
+
+.modal::-webkit-scrollbar-thumb,
+.modal-body::-webkit-scrollbar-thumb {
+    background: var(--bg-hover);
+    border-radius: 3px;
+}
+
+.modal::-webkit-scrollbar-thumb:hover,
+.modal-body::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* 表单标签悬停效果 */
+.form-label {
+    transition: color 0.2s ease;
+}
+
+.form-group:hover .form-label {
+    color: var(--text-primary);
+}
+
+/* 密码切换按钮增强 */
+.password-toggle {
+    transition: all 0.2s ease;
+}
+
+.password-toggle:hover {
+    transform: translateY(-50%) scale(1.1);
+    background-color: var(--accent-color);
+    color: white;
+}
+
+/* 开关卡片悬停效果 */
+.switch-card:hover {
+    background-color: var(--bg-tertiary);
+    border-color: var(--text-muted);
+}
+
+/* 快速选择按钮组动画 */
+.quick-select-btn {
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.quick-select-btn::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 0;
+    height: 2px;
+    background: var(--accent-color);
+    transform: translateX(-50%);
+    transition: width 0.3s ease;
+}
+
+.quick-select-btn:hover::after,
+.quick-select-btn.active::after {
+    width: 80%;
+}
+
+/* 模态框进入动画 */
+.modal {
+    animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* 标签脉冲动画（用于活动状态） */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.badge {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+/* 表单卡片图标悬浮动画 */
+.form-card-icon {
+    transition: all 0.3s ease;
+}
+
+.form-card:hover .form-card-icon {
+    transform: scale(1.1) rotate(5deg);
+}
+
+/* 输入框占位符样式 */
+.form-input::placeholder,
+.form-textarea::placeholder {
+    color: var(--text-muted);
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+.form-input:focus::placeholder,
+.form-textarea:focus::placeholder {
+    opacity: 0.4;
 }

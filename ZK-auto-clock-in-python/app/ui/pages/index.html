@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ZK 多用户自动打卡系统</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=4.0">
+    <link rel="stylesheet" href="/assets/styles.css?v=5.1">
 </head>
 <body>
     <div class="container">
@@ -123,25 +123,27 @@
                 <form id="userForm">
                     <input type="hidden" id="userId">
 
-                    <!-- 基本信息区域 -->
-                    <div class="form-section">
-                        <div class="form-section-title">基本信息</div>
-                        <div class="form-row">
-                            <div class="form-col">
-                                <div class="form-group">
-                                    <label class="form-label">用户名 *</label>
-                                    <input type="text" class="form-input" id="username" name="username" required>
-                                </div>
+                    <!-- 基本信息卡片 -->
+                    <div class="form-card form-card-gradient-blue">
+                        <div class="form-card-header">
+                            <div class="form-card-icon">👤</div>
+                            <div>
+                                <div class="form-card-title">基本信息</div>
+                                <div class="form-card-description">配置用户登录信息和基本设置</div>
                             </div>
-                            <div class="form-col">
-                                <div class="form-group">
-                                    <label class="form-label">密码 *</label>
-                                    <div class="password-input-wrapper">
-                                        <input type="password" class="form-input" id="password" name="password" required>
-                                        <button type="button" class="password-toggle" onclick="togglePasswordVisibility('password')" title="显示/隐藏密码">
-                                            <span class="eye-icon">👁</span>
-                                        </button>
-                                    </div>
+                        </div>
+                        <div class="field-row">
+                            <div class="form-group">
+                                <label class="form-label">用户名 *</label>
+                                <input type="text" class="form-input" id="username" name="username" required placeholder="请输入精夏平台用户名">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">密码 *</label>
+                                <div class="password-input-wrapper">
+                                    <input type="password" class="form-input" id="password" name="password" required placeholder="请输入精夏平台密码">
+                                    <button type="button" class="password-toggle" onclick="togglePasswordVisibility('password')" title="显示/隐藏密码">
+                                        <span class="eye-icon">👁</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -152,47 +154,69 @@
                         </div>
                     </div>
 
-                    <!-- 运动打卡配置区域 -->
-                    <div class="form-section">
-                        <div class="form-section-title">🏃 运动打卡配置</div>
+                    <!-- 运动打卡配置卡片 -->
+                    <div class="form-card form-card-gradient-pink">
+                        <div class="form-card-header">
+                            <div class="form-card-icon">🏃</div>
+                            <div>
+                                <div class="form-card-title">运动打卡配置</div>
+                                <div class="form-card-description">配置运动打卡的备注和图片内容</div>
+                            </div>
+                        </div>
 
-                        <!-- 备注配置 -->
-                        <div style="margin-bottom: 20px;">
-                            <label class="form-label" style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">备注配置</label>
-                            <div class="form-group">
-                                <label class="form-label">备注类型</label>
+                        <!-- 备注配置选项 -->
+                        <div class="config-option-card">
+                            <div class="config-option-header">
+                                <div class="config-option-label">
+                                    <span>📝</span>
+                                    <span>备注类型</span>
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
                                 <select class="form-select" id="sports_comment_type" onchange="onSportsCommentTypeChange()">
                                     <option value="default">默认文案</option>
                                     <option value="custom">自定义内容</option>
                                     <option value="api">API 接口</option>
                                 </select>
                             </div>
+                        </div>
 
-                            <!-- 自定义备注（条件显示） -->
-                            <div class="form-group" id="sports_custom_group" style="display: none;">
-                                <label class="form-label">自定义备注内容</label>
+                        <!-- 自定义备注（条件显示） -->
+                        <div class="config-option-card" id="sports_custom_group" style="display: none;">
+                            <div class="config-option-header">
+                                <div class="config-option-label">
+                                    <span>✏️</span>
+                                    <span>自定义备注内容</span>
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
                                 <input type="text" class="form-input" id="sports_custom_comment" placeholder="请输入运动打卡备注内容">
                             </div>
+                        </div>
 
-                            <!-- API配置（条件显示） -->
-                            <div id="sports_api_group" style="display: none;">
-                                <div class="form-row">
-                                    <div class="form-col">
-                                        <div class="form-group">
-                                            <label class="form-label">API 供应商</label>
-                                            <select class="form-select" id="sports_api_provider" onchange="onSportsApiProviderChange()">
-                                                <option value="jinrishici">今日诗词（推荐）</option>
-                                                <option value="cenguigui">随机一言</option>
-                                                <option value="hitokoto">一言</option>
-                                                <option value="yuanmeng">远梦API</option>
-                                                <option value="klapi">KLapi</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="form-col" id="sports_api_category_group" style="display: none;">
-                                        <div class="form-group">
-                                            <label class="form-label">诗词分类</label>
-                                            <select class="form-select" id="sports_api_jinrishici">
+                        <!-- API配置（条件显示） -->
+                        <div class="config-option-card" id="sports_api_group" style="display: none;">
+                            <div class="config-option-header">
+                                <div class="config-option-label">
+                                    <span>🔌</span>
+                                    <span>API 接口配置</span>
+                                    <span class="config-option-badge">推荐</span>
+                                </div>
+                            </div>
+                            <div class="field-row">
+                                <div class="form-group">
+                                    <label class="form-label">API 供应商</label>
+                                    <select class="form-select" id="sports_api_provider" onchange="onSportsApiProviderChange()">
+                                        <option value="jinrishici">今日诗词（推荐）</option>
+                                        <option value="cenguigui">随机一言</option>
+                                        <option value="hitokoto">一言</option>
+                                        <option value="yuanmeng">远梦API</option>
+                                        <option value="klapi">KLapi</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" id="sports_api_category_group" style="display: none;">
+                                    <label class="form-label">诗词分类</label>
+                                    <select class="form-select" id="sports_api_jinrishici">
                                         <optgroup label="主要分类">
                                             <option value="poetry_all">全部（推荐）</option>
                                             <option value="poetry_shuqing">抒情</option>
@@ -302,22 +326,32 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- 图片配置 -->
-                    <div style="margin-bottom: 20px;">
-                        <label class="form-label" style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">图片配置</label>
-                        <div class="form-group">
-                            <label class="form-label">图片来源</label>
-                            <select class="form-select" id="sports_image_type" onchange="onSportsImageTypeChange()">
-                                <option value="default">默认图片（必应）</option>
-                                <option value="api">API 接口</option>
-                            </select>
+                        <!-- 图片配置选项 -->
+                        <div class="config-option-card">
+                            <div class="config-option-header">
+                                <div class="config-option-label">
+                                    <span>🖼️</span>
+                                    <span>图片来源</span>
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <select class="form-select" id="sports_image_type" onchange="onSportsImageTypeChange()">
+                                    <option value="default">默认图片（必应）</option>
+                                    <option value="api">API 接口</option>
+                                </select>
+                            </div>
                         </div>
 
-                        <!-- API配置（条件显示） -->
-                        <div class="form-row" id="sports_image_api_group" style="display: none;">
-                            <div class="form-col">
+                        <!-- 图片API配置（条件显示） -->
+                        <div class="config-option-card" id="sports_image_api_group" style="display: none;">
+                            <div class="config-option-header">
+                                <div class="config-option-label">
+                                    <span>🎨</span>
+                                    <span>图片 API 配置</span>
+                                </div>
+                            </div>
+                            <div class="field-row">
                                 <div class="form-group">
                                     <label class="form-label">图片 API 供应商</label>
                                     <select class="form-select" id="sports_image_provider" onchange="onSportsImageProviderChange()">
@@ -327,9 +361,7 @@
                                         <option value="cimuapi">次元API</option>
                                     </select>
                                 </div>
-                            </div>
-                            <div class="form-col" id="sports_image_category_group" style="display: none;">
-                                <div class="form-group">
+                                <div class="form-group" id="sports_image_category_group" style="display: none;">
                                     <label class="form-label">图片分类</label>
                                     <select class="form-select" id="sports_image_category">
                                         <option value="random">随机（推荐）</option>
@@ -355,29 +387,55 @@
                         </div>
                     </div>
 
-                    <!-- 每日进度配置区域 -->
-                    <div class="form-section">
-                        <div class="form-section-title">📅 每日进度配置</div>
+                    <!-- 每日进度配置卡片 -->
+                    <div class="form-card form-card-gradient-cyan">
+                        <div class="form-card-header">
+                            <div class="form-card-icon">📅</div>
+                            <div>
+                                <div class="form-card-title">每日进度配置</div>
+                                <div class="form-card-description">配置每日打卡的备注内容</div>
+                            </div>
+                        </div>
 
-                        <!-- 备注配置 -->
-                        <div class="form-group">
-                            <label class="form-label">备注类型</label>
-                            <select class="form-select" id="daily_comment_type" onchange="onDailyCommentTypeChange()">
-                                <option value="default">默认文案</option>
-                                <option value="custom">自定义内容</option>
-                                <option value="api">API 接口</option>
-                            </select>
+                        <!-- 备注配置选项 -->
+                        <div class="config-option-card">
+                            <div class="config-option-header">
+                                <div class="config-option-label">
+                                    <span>📝</span>
+                                    <span>备注类型</span>
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <select class="form-select" id="daily_comment_type" onchange="onDailyCommentTypeChange()">
+                                    <option value="default">默认文案</option>
+                                    <option value="custom">自定义内容</option>
+                                    <option value="api">API 接口</option>
+                                </select>
+                            </div>
                         </div>
 
                         <!-- 自定义内容输入框（条件显示） -->
-                        <div class="form-group" id="custom_content_group" style="display: none;">
-                            <label class="form-label">自定义备注内容</label>
-                            <textarea class="form-textarea" id="custom_daily_comment" placeholder="请输入自定义的每日进度备注内容"></textarea>
+                        <div class="config-option-card" id="custom_content_group" style="display: none;">
+                            <div class="config-option-header">
+                                <div class="config-option-label">
+                                    <span>✏️</span>
+                                    <span>自定义备注内容</span>
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <textarea class="form-textarea" id="custom_daily_comment" placeholder="请输入自定义的每日进度备注内容"></textarea>
+                            </div>
                         </div>
 
                         <!-- API配置（条件显示） -->
-                        <div class="form-row" id="api_select_group" style="display: none;">
-                            <div class="form-col">
+                        <div class="config-option-card" id="api_select_group" style="display: none;">
+                            <div class="config-option-header">
+                                <div class="config-option-label">
+                                    <span>🔌</span>
+                                    <span>API 接口配置</span>
+                                </div>
+                            </div>
+                            <div class="field-row">
                                 <div class="form-group">
                                     <label class="form-label">API 供应商</label>
                                     <select class="form-select" id="api_provider" onchange="onApiProviderChange()">
@@ -388,9 +446,7 @@
                                         <option value="klapi">KLapi</option>
                                     </select>
                                 </div>
-                            </div>
-                            <div class="form-col" id="api_category_group" style="display: none;">
-                                <div class="form-group">
+                                <div class="form-group" id="api_category_group" style="display: none;">
                                     <label class="form-label">诗词分类</label>
                                     <select class="form-select" id="daily_comment_api_jinrishici">
                                         <optgroup label="主要分类">
@@ -504,18 +560,31 @@
                         </div>
                     </div>
 
-                    <!-- 其他选项 -->
-                    <div class="form-group">
-                        <label class="form-checkbox">
-                            <input type="checkbox" id="enabled" checked>
-                            <span>启用该用户</span>
-                        </label>
+                    <!-- 状态设置卡片 -->
+                    <div class="form-card form-card-gradient-orange">
+                        <div class="form-card-header">
+                            <div class="form-card-icon">⚙️</div>
+                            <div>
+                                <div class="form-card-title">状态设置</div>
+                                <div class="form-card-description">控制用户的启用状态</div>
+                            </div>
+                        </div>
+                        <div class="switch-card">
+                            <div class="switch-card-info">
+                                <div class="switch-card-title">启用该用户</div>
+                                <div class="switch-card-description">开启后将自动执行定时打卡任务</div>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="enabled" checked>
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
                 <button class="btn" onclick="closeUserModal()">取消</button>
-                <button class="btn btn-primary" onclick="saveUser()">保存</button>
+                <button class="btn btn-primary" onclick="saveUser()">保存用户</button>
             </div>
         </div>
     </div>
@@ -640,41 +709,80 @@
             </div>
             <div class="modal-body">
                 <input type="hidden" id="workerApiId">
-                <div class="form-group">
-                    <label class="form-label">API 名称</label>
-                    <input type="text" class="form-input" id="workerApiName" placeholder="例如: Worker-1">
-                    <div class="form-help">为这个 API 实例起一个易于识别的名称</div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">API 地址</label>
-                    <input type="text" class="form-input" id="workerApiUrl" placeholder="check-in-api.case.con" onblur="autoFormatUrl(this)">
-                    <div class="form-help">Worker API 的地址（可省略 https://，系统会自动添加）</div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">API Token</label>
-                    <div class="password-input-wrapper">
-                        <input type="password" class="form-input" id="workerApiToken" placeholder="your-api-token">
-                        <button type="button" class="password-toggle" onclick="togglePasswordVisibility('workerApiToken')" title="显示/隐藏密码">
-                            <span class="eye-icon">👁</span>
-                        </button>
+
+                <!-- 基本信息卡片 -->
+                <div class="form-card form-card-gradient-blue">
+                    <div class="form-card-header">
+                        <div class="form-card-icon">🔗</div>
+                        <div>
+                            <div class="form-card-title">API 配置</div>
+                            <div class="form-card-description">配置 Worker API 连接信息</div>
+                        </div>
                     </div>
-                    <div class="form-help">与对应 Worker 的 API_TOKEN 保持一致</div>
+                    <div class="field-group">
+                        <div class="form-group">
+                            <label class="form-label">API 名称</label>
+                            <input type="text" class="form-input" id="workerApiName" placeholder="例如: Worker-1">
+                            <div class="form-help">为这个 API 实例起一个易于识别的名称</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">API 地址</label>
+                            <input type="text" class="form-input" id="workerApiUrl" placeholder="check-in-api.case.con" onblur="autoFormatUrl(this)">
+                            <div class="form-help">Worker API 的地址（可省略 https://，系统会自动添加）</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">备注（可选）</label>
-                    <input type="text" class="form-input" id="workerApiNote" placeholder="例如: 主要节点">
-                    <div class="form-help">添加一些说明信息</div>
+
+                <!-- 认证信息卡片 -->
+                <div class="form-card form-card-gradient-pink">
+                    <div class="form-card-header">
+                        <div class="form-card-icon">🔐</div>
+                        <div>
+                            <div class="form-card-title">认证信息</div>
+                            <div class="form-card-description">配置 API 访问凭证</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">API Token</label>
+                        <div class="password-input-wrapper">
+                            <input type="password" class="form-input" id="workerApiToken" placeholder="your-api-token">
+                            <button type="button" class="password-toggle" onclick="togglePasswordVisibility('workerApiToken')" title="显示/隐藏密码">
+                                <span class="eye-icon">👁</span>
+                            </button>
+                        </div>
+                        <div class="form-help">与对应 Worker 的 API_TOKEN 保持一致</div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="workerApiEnabled" checked>
-                        <span>启用此 API</span>
-                    </label>
+
+                <!-- 其他设置卡片 -->
+                <div class="form-card form-card-gradient-cyan">
+                    <div class="form-card-header">
+                        <div class="form-card-icon">⚙️</div>
+                        <div>
+                            <div class="form-card-title">其他设置</div>
+                            <div class="form-card-description">配置其他可选参数</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">备注（可选）</label>
+                        <input type="text" class="form-input" id="workerApiNote" placeholder="例如: 主要节点">
+                        <div class="form-help">添加一些说明信息</div>
+                    </div>
+                    <div class="switch-card">
+                        <div class="switch-card-info">
+                            <div class="switch-card-title">启用此 API</div>
+                            <div class="switch-card-description">开启后将参与负载均衡</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="workerApiEnabled" checked>
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button class="btn" onclick="closeWorkerApiModal()">取消</button>
-                <button class="btn btn-primary" onclick="saveWorkerApi()">保存</button>
+                <button class="btn btn-primary" onclick="saveWorkerApi()">保存配置</button>
             </div>
         </div>
     </div>
@@ -682,6 +790,6 @@
     <!-- 提示消息 -->
     <div class="toast" id="toast"></div>
 
-    <script src="/assets/app.js?v=4.0"></script>
+    <script src="/assets/app.js?v=5.0"></script>
 </body>
 </html>
