@@ -142,6 +142,11 @@ class ClockinResultResponse(BaseModel):
     sports_comment_source: Optional[str] = None
     daily_comment: Optional[str] = None
     daily_comment_source: Optional[str] = None
+    sports_comment_api: Optional[str] = None
+    daily_comment_api: Optional[str] = None
+    sports_image_type: Optional[str] = None
+    sports_image_provider: Optional[str] = None
+    sports_image_category: Optional[str] = None
     duration_ms: Optional[int] = None
     triggered_by: Optional[str] = None
     error: Optional[str] = None

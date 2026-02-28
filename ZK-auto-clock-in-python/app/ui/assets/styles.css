@@ -953,6 +953,45 @@ body {
     margin-left: 8px;
 }
 
+/* API使用信息区域 */
+.record-api-section {
+    padding: 12px;
+    background: linear-gradient(135deg, rgba(66, 165, 245, 0.08) 0%, rgba(66, 165, 245, 0.03) 100%);
+    border: 1px solid rgba(66, 165, 245, 0.3);
+    border-radius: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.record-api-section:empty {
+    display: none;
+}
+
+.api-info-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    padding: 4px 10px;
+    background-color: var(--bg-primary);
+    border: 1px solid rgba(66, 165, 245, 0.2);
+    border-radius: 4px;
+    color: var(--text-secondary);
+}
+
+.api-info-label {
+    font-weight: 600;
+    color: #42A5F5;
+}
+
+.api-info-value {
+    color: var(--text-primary);
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 10px;
+}
+
 /* 错误信息区域 */
 .record-error-section {
     padding: 12px 16px;

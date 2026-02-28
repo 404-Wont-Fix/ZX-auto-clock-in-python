@@ -152,6 +152,13 @@ class ClockinService:
                     result['daily_comment'] = daily_comment
                     result['daily_comment_source'] = user.daily_comment_type
 
+                    # API 使用信息
+                    result['sports_comment_api'] = user.sports_comment_api if user.sports_comment_type == 'api' else None
+                    result['daily_comment_api'] = user.daily_comment_api if user.daily_comment_type == 'api' else None
+                    result['sports_image_type'] = user.sports_image_type
+                    result['sports_image_provider'] = user.sports_image_provider
+                    result['sports_image_category'] = user.sports_image_category
+
                     # 标记成功
                     if last_worker_api_id:
                         await WorkerApiService.mark_success(db, last_worker_api_id)
@@ -224,6 +231,11 @@ class ClockinService:
             sports_comment_source=result.get('sports_comment_source'),
             daily_comment=result.get('daily_comment'),
             daily_comment_source=result.get('daily_comment_source'),
+            sports_comment_api=result.get('sports_comment_api'),
+            daily_comment_api=result.get('daily_comment_api'),
+            sports_image_type=result.get('sports_image_type'),
+            sports_image_provider=result.get('sports_image_provider'),
+            sports_image_category=result.get('sports_image_category'),
             duration_ms=result.get('duration'),
             triggered_by=result.get('triggered_by'),
             error=result.get('error')

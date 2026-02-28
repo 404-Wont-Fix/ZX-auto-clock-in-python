@@ -95,6 +95,13 @@ class ClockinResult(Base):
     daily_comment = Column(String)
     daily_comment_source = Column(String)
 
+    # API 使用信息
+    sports_comment_api = Column(String)  # 使用的文字API (poetry_all等)
+    daily_comment_api = Column(String)  # 使用的每日打卡文字API
+    sports_image_type = Column(String)  # 图片类型 (default/api)
+    sports_image_provider = Column(String)  # 图片提供商 (bing等)
+    sports_image_category = Column(String)  # 图片分类
+
     # 执行信息
     duration_ms = Column(Integer)
     triggered_by = Column(String)  # manual/scheduled
@@ -135,6 +142,11 @@ class ClockinResult(Base):
             'sports_comment_source': self.sports_comment_source,
             'daily_comment': self.daily_comment,
             'daily_comment_source': self.daily_comment_source,
+            'sports_comment_api': self.sports_comment_api,
+            'daily_comment_api': self.daily_comment_api,
+            'sports_image_type': self.sports_image_type,
+            'sports_image_provider': self.sports_image_provider,
+            'sports_image_category': self.sports_image_category,
             'duration_ms': self.duration_ms,
             'triggered_by': self.triggered_by,
             'error': self.error,

@@ -731,7 +731,9 @@ function renderDayRecords(container, results) {
                             ` : ''}
                         </div>
                     ` : ''}
-                    
+
+                    ${renderApiInfo(result)}
+
                     ${hasError ? `
                         <div class="record-error-section">
                             <span class="record-error-icon">❌</span>
@@ -786,6 +788,55 @@ function renderRecordTypeItem(key, name, icon, detail) {
                     ${escapeHtml(message)}
                 </div>
             ` : ''}
+        </div>
+    `;
+}
+
+// 渲染API使用信息
+function renderApiInfo(result) {
+    const apiInfos = [];
+
+    // 文字API信息
+    if (result.sports_comment_source === 'api' && result.sports_comment_api) {
+        apiInfos.push({
+            label: '📝 运动文字API',
+            value: result.sports_comment_api
+        });
+    }
+
+    if (result.daily_comment_source === 'api' && result.daily_comment_api) {
+        apiInfos.push({
+            label: '📚 每日文字API',
+            value: result.daily_comment_api
+        });
+    }
+
+    // 图片API信息
+    if (result.sports_image_type === 'api' && result.sports_image_provider) {
+        const imageInfo = `🖼 图片: ${result.sports_image_provider}${result.sports_image_category && result.sports_image_category !== 'random' ? '/' + result.sports_image_category : ''}`;
+        apiInfos.push({
+            label: '🖼 图片API',
+            value: imageInfo
+        });
+    } else if (result.sports_image_type === 'default') {
+        apiInfos.push({
+            label: '🖼 图片',
+            value: '默认纸张'
+        });
+    }
+
+    if (apiInfos.length === 0) {
+        return '';
+    }
+
+    return `
+        <div class="record-api-section">
+            ${apiInfos.map(info => `
+                <span class="api-info-badge">
+                    <span class="api-info-label">${info.label}</span>
+                    <span class="api-info-value">${escapeHtml(info.value)}</span>
+                </span>
+            `).join('')}
         </div>
     `;
 }
