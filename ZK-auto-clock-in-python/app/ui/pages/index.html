@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZK 多用户自动打卡系统</title>
+    <link rel="stylesheet" href="/assets/styles.css?v=2.0">
+</head>
+<body>
+    <div class="container">
+        <!-- 头部 -->
+        <header class="header">
+            <div>
+                <h1>ZK 多用户自动打卡系统</h1>
+                <div class="subtitle">为足下教育平台提供自动化打卡服务</div>
+            </div>
+        </header>
+
+        <!-- 统计卡片 -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">总用户数</div>
+                <div class="stat-value" id="statTotalUsers">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">已启用</div>
+                <div class="stat-value" id="statEnabledUsers">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">今日成功</div>
+                <div class="stat-value" id="statTodaySuccess">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">今日失败</div>
+                <div class="stat-value" id="statTodayFailure">-</div>
+            </div>
+        </div>
+
+        <!-- 操作栏 -->
+        <div class="action-bar">
+            <button class="btn btn-primary" onclick="openAddUserModal()">
+                <span>+</span> 添加用户
+            </button>
+            <button class="btn" onclick="triggerAllClockin()">
+                <span>▶</span> 手动打卡
+            </button>
+            <button class="btn" onclick="cleanupOldRecords()">
+                <span>🗑</span> 清理记录
+            </button>
+            <button class="btn" onclick="openConfigModal()">
+                <span>⚙</span> 系统设置
+            </button>
+            <button class="btn" onclick="loadUsers()">
+                <span>↻</span> 刷新
+            </button>
+        </div>
+
+        <!-- 用户列表 -->
+        <h2 class="section-title">用户列表</h2>
+        <div class="user-list" id="userList">
+            <div class="empty-state">
+                <div class="empty-icon">📋</div>
+                <div>加载中...</div>
+            </div>
+        </div>
+
+        <!-- 最近打卡记录 -->
+        <div class="records-section">
+            <div class="section-header">
+                <h2 class="section-title">最近打卡记录</h2>
+                <button class="btn btn-sm" onclick="toggleRecordRange()">
+                    <span id="rangeToggleText">📅 切换到一周视图</span>
+                </button>
+            </div>
+            <div class="record-list" id="recordList">
+                <div class="empty-state">
+                    <div class="empty-icon">📊</div>
+                    <div>加载中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加/编辑用户弹窗 -->
+    <div class="modal-overlay" id="userModal">
+        <div class="modal modal-large">
+            <div class="modal-header">
+                <div class="modal-title" id="modalTitle">添加用户</div>
+                <button class="modal-close" onclick="closeUserModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="userForm">
+                    <input type="hidden" id="userId">
+
+                    <!-- 基本信息区域 -->
+                    <div class="form-section">
+                        <div class="form-section-title">基本信息</div>
+                        <div class="form-row">
+                            <div class="form-col">
+                                <div class="form-group">
+                                    <label class="form-label">用户名 *</label>
+                                    <input type="text" class="form-input" id="username" required>
+                                </div>
+                            </div>
+                            <div class="form-col">
+                                <div class="form-group">
+                                    <label class="form-label">密码 *</label>
+                                    <div class="password-input-wrapper">
+                                        <input type="password" class="form-input" id="password" required>
+                                        <button type="button" class="password-toggle" onclick="togglePasswordVisibility('password')" title="显示/隐藏密码">
+                                            <span class="eye-icon">👁</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">昵称</label>
+                            <input type="text" class="form-input" id="nickname" placeholder="用于备注，如：张三的账号">
+                            <div class="form-help">可选，用于标识该账户归属</div>
+                        </div>
+                    </div>
+
+                    <!-- 运动打卡配置区域 -->
+                    <div class="form-section">
+                        <div class="form-section-title">运动打卡配置</div>
+                        <div class="form-row">
+                            <div class="form-col">
+                                <div class="form-group">
+                                    <label class="form-label">备注类型</label>
+                                    <select class="form-select" id="sports_comment_type" onchange="onSportsCommentTypeChange()">
+                                        <option value="default">默认文案</option>
+                                        <option value="custom">自定义内容</option>
+                                        <option value="api">API 接口</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-col">
+                                <div class="form-group">
+                                    <label class="form-label">图片来源</label>
+                                    <select class="form-select" id="sports_image_type" onchange="onSportsImageTypeChange()">
+                                        <option value="default">默认图片（必应）</option>
+                                        <option value="api">API 接口</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 运动备注自定义内容 -->
+                        <div class="form-group" id="sports_custom_group" style="display: none;">
+                            <label class="form-label">自定义运动备注</label>
+                            <input type="text" class="form-input" id="sports_custom_comment" placeholder="请输入运动打卡备注内容">
+                            <div class="form-help">将使用此固定内容作为运动备注</div>
+                        </div>
+
+                        <!-- 运动备注API选择 -->
+                        <div class="form-row" id="sports_api_group" style="display: none;">
+                            <div class="form-col">
+                                <div class="form-group">
+                                    <label class="form-label">API 供应商</label>
+                                    <select class="form-select" id="sports_api_provider" onchange="onSportsApiProviderChange()">
+                                        <option value="jinrishici">今日诗词（推荐）</option>
+                                        <option value="cenguigui">随机一言</option>
+                                        <option value="hitokoto">一言</option>
+                                        <option value="yuanmeng">远梦API</option>
+                                        <option value="klapi">KLapi</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-col" id="sports_api_category_group" style="display: none;">
+                                <div class="form-group">
+                                    <label class="form-label">诗词分类</label>
+                                    <select class="form-select" id="sports_api_jinrishici">
+                                        <optgroup label="主要分类">
+                                            <option value="poetry_all">全部（推荐）</option>
+                                            <option value="poetry_shuqing">抒情</option>
+                                            <option value="poetry_siji">四季</option>
+                                            <option value="poetry_shanshui">山水</option>
+                                            <option value="poetry_tianqi">天气</option>
+                                            <option value="poetry_renwu">人物</option>
+                                            <option value="poetry_rensheng">人生</option>
+                                            <option value="poetry_shenghuo">生活</option>
+                                            <option value="poetry_jieri">节日</option>
+                                            <option value="poetry_dongwu">动物</option>
+                                            <option value="poetry_zhiwu">植物</option>
+                                            <option value="poetry_shiwu">食物</option>
+                                        </optgroup>
+                                        <optgroup label="抒情子分类">
+                                            <option value="poetry_shuqing_aiqing">抒情-爱情</option>
+                                            <option value="poetry_shuqing_youqing">抒情-友情</option>
+                                            <option value="poetry_shuqing_libie">抒情-离别</option>
+                                            <option value="poetry_shuqing_sinian">抒情-思念</option>
+                                            <option value="poetry_shuqing_sixiang">抒情-思乡</option>
+                                            <option value="poetry_shuqing_shanggan">抒情-伤感</option>
+                                            <option value="poetry_shuqing_gudu">抒情-孤独</option>
+                                            <option value="poetry_shuqing_guiyuan">抒情-闺怨</option>
+                                            <option value="poetry_shuqing_daowang">抒情-悼亡</option>
+                                            <option value="poetry_shuqing_huaigu">抒情-怀古</option>
+                                            <option value="poetry_shuqing_aiguo">抒情-爱国</option>
+                                            <option value="poetry_shuqing_ganen">抒情-感恩</option>
+                                        </optgroup>
+                                        <optgroup label="四季子分类">
+                                            <option value="poetry_siji_chuntian">四季-春天</option>
+                                            <option value="poetry_siji_xiatian">四季-夏天</option>
+                                            <option value="poetry_siji_qiutian">四季-秋天</option>
+                                            <option value="poetry_siji_dongtian">四季-冬天</option>
+                                        </optgroup>
+                                        <optgroup label="山水子分类">
+                                            <option value="poetry_shanshui_lushan">山水-庐山</option>
+                                            <option value="poetry_shanshui_taishan">山水-泰山</option>
+                                            <option value="poetry_shanshui_jianghe">山水-江河</option>
+                                            <option value="poetry_shanshui_changjiang">山水-长江</option>
+                                            <option value="poetry_shanshui_huanghe">山水-黄河</option>
+                                            <option value="poetry_shanshui_xihu">山水-西湖</option>
+                                            <option value="poetry_shanshui_pubu">山水-瀑布</option>
+                                        </optgroup>
+                                        <optgroup label="天气子分类">
+                                            <option value="poetry_tianqi_xiefeng">天气-写风</option>
+                                            <option value="poetry_tianqi_xieyun">天气-写云</option>
+                                            <option value="poetry_tianqi_xieyu">天气-写雨</option>
+                                            <option value="poetry_tianqi_xiexue">天气-写雪</option>
+                                            <option value="poetry_tianqi_caihong">天气-彩虹</option>
+                                            <option value="poetry_tianqi_taiyang">天气-太阳</option>
+                                            <option value="poetry_tianqi_yueliang">天气-月亮</option>
+                                            <option value="poetry_tianqi_xingxing">天气-星星</option>
+                                        </optgroup>
+                                        <optgroup label="人物子分类">
+                                            <option value="poetry_renwu_nvzi">人物-女子</option>
+                                            <option value="poetry_renwu_fuqin">人物-父亲</option>
+                                            <option value="poetry_renwu_muqin">人物-母亲</option>
+                                            <option value="poetry_renwu_laoshi">人物-老师</option>
+                                            <option value="poetry_renwu_ertong">人物-儿童</option>
+                                        </optgroup>
+                                        <optgroup label="人生子分类">
+                                            <option value="poetry_rensheng_lizhi">人生-励志</option>
+                                            <option value="poetry_rensheng_zheli">人生-哲理</option>
+                                            <option value="poetry_rensheng_qingchun">人生-青春</option>
+                                            <option value="poetry_rensheng_shiguang">人生-时光</option>
+                                            <option value="poetry_rensheng_mengxiang">人生-梦想</option>
+                                            <option value="poetry_rensheng_dushu">人生-读书</option>
+                                            <option value="poetry_rensheng_zhanzheng">人生-战争</option>
+                                        </optgroup>
+                                        <optgroup label="生活子分类">
+                                            <option value="poetry_shenghuo_xiangcun">生活-乡村</option>
+                                            <option value="poetry_shenghuo_tianyuan">生活-田园</option>
+                                            <option value="poetry_shenghuo_biansai">生活-边塞</option>
+                                            <option value="poetry_shenghuo_xieqiao">生活-写桥</option>
+                                        </optgroup>
+                                        <optgroup label="节日子分类">
+                                            <option value="poetry_jieri_chunjie">节日-春节</option>
+                                            <option value="poetry_jieri_yuanxiaojie">节日-元宵节</option>
+                                            <option value="poetry_jieri_hanshijie">节日-寒食节</option>
+                                            <option value="poetry_jieri_qingmingjie">节日-清明节</option>
+                                            <option value="poetry_jieri_duanwujie">节日-端午节</option>
+                                            <option value="poetry_jieri_qixijie">节日-七夕节</option>
+                                            <option value="poetry_jieri_zhongqiujie">节日-中秋节</option>
+                                            <option value="poetry_jieri_chongyangjie">节日-重阳节</option>
+                                        </optgroup>
+                                        <optgroup label="动物子分类">
+                                            <option value="poetry_dongwu_xieniao">动物-写鸟</option>
+                                            <option value="poetry_dongwu_xiema">动物-写马</option>
+                                            <option value="poetry_dongwu_xiemao">动物-写猫</option>
+                                        </optgroup>
+                                        <optgroup label="植物子分类">
+                                            <option value="poetry_zhiwu_meihua">植物-梅花</option>
+                                            <option value="poetry_zhiwu_lihua">植物-梨花</option>
+                                            <option value="poetry_zhiwu_taohua">植物-桃花</option>
+                                            <option value="poetry_zhiwu_hehua">植物-荷花</option>
+                                            <option value="poetry_zhiwu_juhua">植物-菊花</option>
+                                            <option value="poetry_zhiwu_liushu">植物-柳树</option>
+                                            <option value="poetry_zhiwu_yezi">植物-叶子</option>
+                                            <option value="poetry_zhiwu_zhuzi">植物-竹子</option>
+                                        </optgroup>
+                                        <optgroup label="食物子分类">
+                                            <option value="poetry_shiwu_xiejiu">食物-写酒</option>
+                                            <option value="poetry_shiwu_xiecha">食物-写茶</option>
+                                            <option value="poetry_shiwu_lizhi">食物-荔枝</option>
+                                        </optgroup>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 运动图片API选择 -->
+                        <div class="form-row" id="sports_image_api_group" style="display: none;">
+                            <div class="form-col">
+                                <div class="form-group">
+                                    <label class="form-label">图片 API 供应商</label>
+                                    <select class="form-select" id="sports_image_provider" onchange="onSportsImageProviderChange()">
+                                        <option value="bing">必应壁纸</option>
+                                        <option value="komll">Komll API</option>
+                                        <option value="loliapi">LoliAPI ACG</option>
+                                        <option value="cimuapi">次元API</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-col" id="sports_image_category_group" style="display: none;">
+                                <div class="form-group">
+                                    <label class="form-label">图片分类</label>
+                                    <select class="form-select" id="sports_image_category">
+                                        <option value="random">随机（推荐）</option>
+                                        <option value="ycy">二次元自适应</option>
+                                        <option value="moez">萌版自适应</option>
+                                        <option value="ai">AI自适应</option>
+                                        <option value="ysz">原神自适应</option>
+                                        <option value="pc">PC横图</option>
+                                        <option value="moe">萌版横图</option>
+                                        <option value="fj">风景横图</option>
+                                        <option value="bd">白底横图</option>
+                                        <option value="ys">原神横图</option>
+                                        <option value="mp">移动竖图</option>
+                                        <option value="moemp">萌版竖图</option>
+                                        <option value="ysmp">原神竖图</option>
+                                        <option value="aimp">AI竖图</option>
+                                        <option value="tx">头像方图</option>
+                                        <option value="lai">七濑胡桃</option>
+                                        <option value="xhl">小狐狸</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 每日进度配置区域 -->
+                    <div class="form-section">
+                        <div class="form-section-title">每日进度配置</div>
+                        <div class="form-row">
+                            <div class="form-col">
+                                <div class="form-group">
+                                    <label class="form-label">备注类型</label>
+                                    <select class="form-select" id="daily_comment_type" onchange="onDailyCommentTypeChange()">
+                                        <option value="default">默认文案</option>
+                                        <option value="custom">自定义内容</option>
+                                        <option value="api">API 接口</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-col"></div>
+                        </div>
+
+                        <!-- 自定义内容输入框 -->
+                        <div class="form-group" id="custom_content_group" style="display: none;">
+                            <label class="form-label">自定义备注内容</label>
+                            <textarea class="form-textarea" id="custom_daily_comment" placeholder="请输入自定义的每日进度备注内容"></textarea>
+                            <div class="form-help">将使用此固定内容作为每日备注</div>
+                        </div>
+
+                        <!-- API 选择下拉框 -->
+                        <div class="form-row" id="api_select_group" style="display: none;">
+                            <div class="form-col">
+                                <div class="form-group">
+                                    <label class="form-label">API 供应商</label>
+                                    <select class="form-select" id="api_provider" onchange="onApiProviderChange()">
+                                        <option value="jinrishici">今日诗词（推荐）</option>
+                                        <option value="cenguigui">随机一言</option>
+                                        <option value="hitokoto">一言</option>
+                                        <option value="yuanmeng">远梦API</option>
+                                        <option value="klapi">KLapi</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-col" id="api_category_group" style="display: none;">
+                                <div class="form-group">
+                                    <label class="form-label">诗词分类</label>
+                                    <select class="form-select" id="daily_comment_api_jinrishici">
+                                        <optgroup label="主要分类">
+                                            <option value="poetry_all">全部（推荐）</option>
+                                            <option value="poetry_shuqing">抒情</option>
+                                            <option value="poetry_siji">四季</option>
+                                            <option value="poetry_shanshui">山水</option>
+                                            <option value="poetry_tianqi">天气</option>
+                                            <option value="poetry_renwu">人物</option>
+                                            <option value="poetry_rensheng">人生</option>
+                                            <option value="poetry_shenghuo">生活</option>
+                                            <option value="poetry_jieri">节日</option>
+                                            <option value="poetry_dongwu">动物</option>
+                                            <option value="poetry_zhiwu">植物</option>
+                                            <option value="poetry_shiwu">食物</option>
+                                        </optgroup>
+                                        <optgroup label="抒情子分类">
+                                            <option value="poetry_shuqing_aiqing">抒情-爱情</option>
+                                            <option value="poetry_shuqing_youqing">抒情-友情</option>
+                                            <option value="poetry_shuqing_libie">抒情-离别</option>
+                                            <option value="poetry_shuqing_sinian">抒情-思念</option>
+                                            <option value="poetry_shuqing_sixiang">抒情-思乡</option>
+                                            <option value="poetry_shuqing_shanggan">抒情-伤感</option>
+                                            <option value="poetry_shuqing_gudu">抒情-孤独</option>
+                                            <option value="poetry_shuqing_guiyuan">抒情-闺怨</option>
+                                            <option value="poetry_shuqing_daowang">抒情-悼亡</option>
+                                            <option value="poetry_shuqing_huaigu">抒情-怀古</option>
+                                            <option value="poetry_shuqing_aiguo">抒情-爱国</option>
+                                            <option value="poetry_shuqing_ganen">抒情-感恩</option>
+                                        </optgroup>
+                                        <optgroup label="四季子分类">
+                                            <option value="poetry_siji_chuntian">四季-春天</option>
+                                            <option value="poetry_siji_xiatian">四季-夏天</option>
+                                            <option value="poetry_siji_qiutian">四季-秋天</option>
+                                            <option value="poetry_siji_dongtian">四季-冬天</option>
+                                        </optgroup>
+                                        <optgroup label="山水子分类">
+                                            <option value="poetry_shanshui_lushan">山水-庐山</option>
+                                            <option value="poetry_shanshui_taishan">山水-泰山</option>
+                                            <option value="poetry_shanshui_jianghe">山水-江河</option>
+                                            <option value="poetry_shanshui_changjiang">山水-长江</option>
+                                            <option value="poetry_shanshui_huanghe">山水-黄河</option>
+                                            <option value="poetry_shanshui_xihu">山水-西湖</option>
+                                            <option value="poetry_shanshui_pubu">山水-瀑布</option>
+                                        </optgroup>
+                                        <optgroup label="天气子分类">
+                                            <option value="poetry_tianqi_xiefeng">天气-写风</option>
+                                            <option value="poetry_tianqi_xieyun">天气-写云</option>
+                                            <option value="poetry_tianqi_xieyu">天气-写雨</option>
+                                            <option value="poetry_tianqi_xiexue">天气-写雪</option>
+                                            <option value="poetry_tianqi_caihong">天气-彩虹</option>
+                                            <option value="poetry_tianqi_taiyang">天气-太阳</option>
+                                            <option value="poetry_tianqi_yueliang">天气-月亮</option>
+                                            <option value="poetry_tianqi_xingxing">天气-星星</option>
+                                        </optgroup>
+                                        <optgroup label="人物子分类">
+                                            <option value="poetry_renwu_nvzi">人物-女子</option>
+                                            <option value="poetry_renwu_fuqin">人物-父亲</option>
+                                            <option value="poetry_renwu_muqin">人物-母亲</option>
+                                            <option value="poetry_renwu_laoshi">人物-老师</option>
+                                            <option value="poetry_renwu_ertong">人物-儿童</option>
+                                        </optgroup>
+                                        <optgroup label="人生子分类">
+                                            <option value="poetry_rensheng_lizhi">人生-励志</option>
+                                            <option value="poetry_rensheng_zheli">人生-哲理</option>
+                                            <option value="poetry_rensheng_qingchun">人生-青春</option>
+                                            <option value="poetry_rensheng_shiguang">人生-时光</option>
+                                            <option value="poetry_rensheng_mengxiang">人生-梦想</option>
+                                            <option value="poetry_rensheng_dushu">人生-读书</option>
+                                            <option value="poetry_rensheng_zhanzheng">人生-战争</option>
+                                        </optgroup>
+                                        <optgroup label="生活子分类">
+                                            <option value="poetry_shenghuo_xiangcun">生活-乡村</option>
+                                            <option value="poetry_shenghuo_tianyuan">生活-田园</option>
+                                            <option value="poetry_shenghuo_biansai">生活-边塞</option>
+                                            <option value="poetry_shenghuo_xieqiao">生活-写桥</option>
+                                        </optgroup>
+                                        <optgroup label="节日子分类">
+                                            <option value="poetry_jieri_chunjie">节日-春节</option>
+                                            <option value="poetry_jieri_yuanxiaojie">节日-元宵节</option>
+                                            <option value="poetry_jieri_hanshijie">节日-寒食节</option>
+                                            <option value="poetry_jieri_qingmingjie">节日-清明节</option>
+                                            <option value="poetry_jieri_duanwujie">节日-端午节</option>
+                                            <option value="poetry_jieri_qixijie">节日-七夕节</option>
+                                            <option value="poetry_jieri_zhongqiujie">节日-中秋节</option>
+                                            <option value="poetry_jieri_chongyangjie">节日-重阳节</option>
+                                        </optgroup>
+                                        <optgroup label="动物子分类">
+                                            <option value="poetry_dongwu_xieniao">动物-写鸟</option>
+                                            <option value="poetry_dongwu_xiema">动物-写马</option>
+                                            <option value="poetry_dongwu_xiemao">动物-写猫</option>
+                                        </optgroup>
+                                        <optgroup label="植物子分类">
+                                            <option value="poetry_zhiwu_meihua">植物-梅花</option>
+                                            <option value="poetry_zhiwu_lihua">植物-梨花</option>
+                                            <option value="poetry_zhiwu_taohua">植物-桃花</option>
+                                            <option value="poetry_zhiwu_hehua">植物-荷花</option>
+                                            <option value="poetry_zhiwu_juhua">植物-菊花</option>
+                                            <option value="poetry_zhiwu_liushu">植物-柳树</option>
+                                            <option value="poetry_zhiwu_yezi">植物-叶子</option>
+                                            <option value="poetry_zhiwu_zhuzi">植物-竹子</option>
+                                        </optgroup>
+                                        <optgroup label="食物子分类">
+                                            <option value="poetry_shiwu_xiejiu">食物-写酒</option>
+                                            <option value="poetry_shiwu_xiecha">食物-写茶</option>
+                                            <option value="poetry_shiwu_lizhi">食物-荔枝</option>
+                                        </optgroup>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 其他选项 -->
+                    <div class="form-group">
+                        <label class="form-checkbox">
+                            <input type="checkbox" id="enabled" checked>
+                            <span>启用该用户</span>
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeUserModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveUser()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系统设置弹窗 -->
+    <div class="modal-overlay" id="configModal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">系统设置</div>
+                <button class="modal-close" onclick="closeConfigModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Clockin Worker 地址</label>
+                    <input type="text" class="form-input" id="configApiUrl" placeholder="http://127.0.0.1:13495">
+                    <div class="form-help">打卡执行器 API 地址</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">API Token</label>
+                    <div class="password-input-wrapper">
+                        <input type="password" class="form-input" id="configApiToken" placeholder="local-dev-token-12345678">
+                        <button type="button" class="password-toggle" onclick="togglePasswordVisibility('configApiToken')" title="显示/隐藏密码">
+                            <span class="eye-icon">👁</span>
+                        </button>
+                    </div>
+                    <div class="form-help">与 clockin-worker 的 API_TOKEN 保持一致</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">批处理数量</label>
+                    <input type="number" class="form-input" id="configBatchSize" value="3" min="1" max="10">
+                    <div class="form-help">每批并行处理的用户数量</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">批次间延迟 (ms)</label>
+                    <input type="number" class="form-input" id="configBatchDelay" value="2000" min="0" max="10000" step="500">
+                    <div class="form-help">批次之间的等待时间（毫秒）</div>
+                </div>
+                <div style="padding: 12px; background: var(--bg-tertiary); border-radius: 6px; font-size: 13px; color: var(--text-secondary);">
+                    <strong>提示：</strong>配置将保存到 KV 存储中，优先级高于环境变量。
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="testConfig()">测试连接</button>
+                <button class="btn" onclick="closeConfigModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveConfig()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 提示消息 -->
+    <div class="toast" id="toast"></div>
+
+    <script src="/assets/app.js?v=2.0"></script>
+</body>
+</html>
