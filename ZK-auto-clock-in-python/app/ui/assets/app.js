@@ -792,6 +792,109 @@ function renderRecordTypeItem(key, name, icon, detail) {
     `;
 }
 
+// API 名称映射表
+const API_NAME_MAP = {
+    // 文字 API
+    'poetry_all': '今日诗词（推荐）',
+    'poetry_default': '今日诗词（推荐）',
+    'hitokoto': '一言',
+    'hitokoto_all': '一言',
+    'cenguigui': '随机一言',
+    'cenguigui_default': '随机一言',
+    'yuanmeng': '远梦API',
+    'yuanmeng_default': '远梦API',
+    'klapi': 'KLapi',
+    'klapi_default': 'KLapi',
+
+    // 图片提供商
+    'default': '默认纸张',
+    'bing': '必应壁纸',
+    'komll': 'Komll',
+    'loliapi': 'LoliAPI',
+    'cimuapi': '次元API',
+
+    // 次元API分类
+    'ycy': '二次元自适应',
+    'moez': '萌版自适应',
+    'ai': 'AI自适应',
+    'ysz': '原神自适应',
+    'pc': 'PC横图',
+    'moe': '萌版横图',
+    'fj': '风景横图',
+    'bd': '白底横图',
+    'ys': '原神横图',
+    'mp': '移动竖图',
+    'moemp': '萌版竖图',
+    'ysmp': '原神竖图',
+    'aimp': 'AI竖图',
+    'tx': '头像方图',
+    'lai': '七濑胡桃',
+    'xhl': '小狐狸',
+    'random': '随机'
+};
+
+/**
+ * 获取 API 的友好显示名称
+ * @param {string} apiType - API 类型标识符
+ * @returns {string} 友好显示名称
+ */
+function getApiDisplayName(apiType) {
+    if (!apiType) return '未知';
+
+    // 直接匹配
+    if (API_NAME_MAP[apiType]) {
+        return API_NAME_MAP[apiType];
+    }
+
+    // 处理 poetry_xxx 格式
+    if (apiType.startsWith('poetry_')) {
+        const category = apiType.replace('poetry_', '');
+        if (category === 'all' || category === 'default') {
+            return '今日诗词（推荐）';
+        }
+        // 处理诗词分类（如 tianqi_xiefeng）
+        const categoryMap = {
+            'tianqi_xiefeng': '天气·写景',
+            'shuqing': '抒情',
+            'aizhi': '爱之',
+            'kaishi': '凯什',
+            'aigu': '爱国',
+            'songbie': '送别',
+            'aigu': '爱国',
+            'gushi': '古诗',
+            'ci': '词',
+            'quany': '劝学'
+        };
+        if (categoryMap[category]) {
+            return `今日诗词 - ${categoryMap[category]}`;
+        }
+        return `今日诗词 - ${category}`;
+    }
+
+    // 处理 hitokoto_xxx 格式
+    if (apiType.startsWith('hitokoto_')) {
+        return '一言';
+    }
+
+    // 处理 cenguigui_xxx 格式
+    if (apiType.startsWith('cenguigui_')) {
+        return '随机一言';
+    }
+
+    // 处理 yuanmeng_xxx 格式
+    if (apiType.startsWith('yuanmeng_')) {
+        return '远梦API';
+    }
+
+    // 处理 klapi_xxx 格式
+    if (apiType.startsWith('klapi_')) {
+        return 'KLapi';
+    }
+
+    // 未找到匹配，返回原始值
+    return apiType;
+}
+
 // 渲染API使用信息
 function renderApiInfo(result) {
     const apiInfos = [];
@@ -800,20 +903,28 @@ function renderApiInfo(result) {
     if (result.sports_comment_source === 'api' && result.sports_comment_api) {
         apiInfos.push({
             label: '📝 运动文字API',
-            value: result.sports_comment_api
+            value: getApiDisplayName(result.sports_comment_api)
         });
     }
 
     if (result.daily_comment_source === 'api' && result.daily_comment_api) {
         apiInfos.push({
             label: '📚 每日文字API',
-            value: result.daily_comment_api
+            value: getApiDisplayName(result.daily_comment_api)
         });
     }
 
     // 图片API信息
     if (result.sports_image_type === 'api' && result.sports_image_provider) {
-        const imageInfo = `🖼 图片: ${result.sports_image_provider}${result.sports_image_category && result.sports_image_category !== 'random' ? '/' + result.sports_image_category : ''}`;
+        const providerName = getApiDisplayName(result.sports_image_provider);
+        let imageInfo = providerName;
+
+        // 如果有具体的分类，添加分类信息
+        if (result.sports_image_category && result.sports_image_category !== 'random') {
+            const categoryName = getApiDisplayName(result.sports_image_category);
+            imageInfo += ` - ${categoryName}`;
+        }
+
         apiInfos.push({
             label: '🖼 图片API',
             value: imageInfo
