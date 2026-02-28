@@ -636,7 +636,17 @@ async function loadRecords() {
 
 // 渲染单日打卡记录
 function renderDayRecords(container, results) {
-    container.innerHTML = results.map(result => {
+    if (!results || results.length === 0) {
+        container.innerHTML = `
+            <div class="no-records-tip">
+                <div class="no-records-icon">📋</div>
+                <div class="no-records-text">暂无打卡记录</div>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = results.map((result, index) => {
         // 处理详细信息 - 支持 details 和 details_json 两种格式
         let details = null;
         if (result.details && typeof result.details === 'object') {
@@ -649,50 +659,136 @@ function renderDayRecords(container, results) {
             }
         }
 
+        const isSuccess = result.success;
+        const hasError = result.error;
+        
+        // 格式化时间
+        const timeStr = formatTime(result.timestamp);
+        const isScheduled = result.triggered_by === 'scheduled';
+        const durationStr = result.duration_ms ? `${Math.round(result.duration_ms / 1000)}s` : null;
+
         return `
-        <div class="record-item ${result.success ? 'record-success' : 'record-failure'}">
-            <div class="record-header">
-                <div class="record-user">
-                    <strong>${escapeHtml(result.username)}</strong>
-                    ${result.nickname ? `<span class="record-nickname">📌 ${escapeHtml(result.nickname)}</span>` : ''}
+        <div class="record-card ${isSuccess ? 'success' : 'failure'}" data-record-id="${result.id}" onclick="toggleRecordCard(this)">
+            <div class="record-card-header">
+                <div class="record-user-info">
+                    <div class="record-username-row">
+                        <span class="record-username">${escapeHtml(result.username)}</span>
+                        ${result.nickname ? `<span class="record-nickname-tag">📌 ${escapeHtml(result.nickname)}</span>` : ''}
+                    </div>
+                    <div class="record-meta-row">
+                        <span class="record-meta-item">
+                            <span>🕐</span>
+                            <span class="record-time">${timeStr}</span>
+                        </span>
+                        ${durationStr ? `
+                        <span class="record-meta-item record-duration-badge">
+                            <span>⏱</span>
+                            <span>${durationStr}</span>
+                        </span>
+                        ` : ''}
+                        <span class="record-trigger-badge">
+                            <span>${isScheduled ? '🤖' : '👤'}</span>
+                            <span>${isScheduled ? '定时' : '手动'}</span>
+                        </span>
+                    </div>
                 </div>
-                <div class="record-meta">
-                    <span class="record-time">${formatTime(result.timestamp)}</span>
-                    <span class="record-trigger">${result.triggered_by === 'scheduled' ? '🤖 定时' : '👤 手动'}</span>
-                    ${result.duration_ms ? `<span class="record-duration">${Math.round(result.duration_ms / 1000)}s</span>` : ''}
+                
+                <div class="record-status-badge ${isSuccess ? 'success' : 'failure'}">
+                    <span class="status-icon">${isSuccess ? '✓' : '✗'}</span>
+                    <span>${isSuccess ? '成功' : '失败'}</span>
+                </div>
+                
+                <div class="record-expand-icon">▼</div>
+            </div>
+            
+            <div class="record-card-body">
+                <div class="record-card-content">
+                    ${details && typeof details === 'object' ? `
+                        <div class="record-types-grid">
+                            ${renderRecordTypeItem('home', '首页签到', '🏠', details.home)}
+                            ${renderRecordTypeItem('sports', '运动打卡', '🏃', details.sports)}
+                            ${renderRecordTypeItem('daily', '每日进度', '📝', details.daily)}
+                        </div>
+                    ` : ''}
+                    
+                    ${(result.sports_comment || result.daily_comment) ? `
+                        <div class="record-comments-section">
+                            ${result.sports_comment ? `
+                            <div class="comment-row">
+                                <span class="comment-type-label">🏃 运动</span>
+                                <span class="comment-content" title="${escapeHtml(result.sports_comment)}">${escapeHtml(result.sports_comment)}</span>
+                            </div>
+                            ` : ''}
+                            ${result.daily_comment ? `
+                            <div class="comment-row">
+                                <span class="comment-type-label">📝 每日</span>
+                                <span class="comment-content ${result.daily_comment.length > 50 ? 'truncated' : ''}" title="${escapeHtml(result.daily_comment)}">${escapeHtml(result.daily_comment)}</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
+                    
+                    ${hasError ? `
+                        <div class="record-error-section">
+                            <span class="record-error-icon">❌</span>
+                            <span class="record-error-text" title="${escapeHtml(result.error)}">${escapeHtml(result.error)}</span>
+                        </div>
+                    ` : ''}
                 </div>
             </div>
-
-            ${details && typeof details === 'object' ? `
-                <div class="clockin-results">
-                    ${renderClockinResults(details)}
-                </div>
-            ` : `
-                <div class="clockin-results">
-                    <div class="no-details">暂无详细信息</div>
-                </div>
-            `}
-
-            ${(result.sports_comment || result.daily_comment) ? `
-                <div class="record-comments">
-                    ${result.sports_comment ? `
-                    <div class="comment-item">
-                        <span class="comment-label">🏃 运动:</span>
-                        <span>${escapeHtml(result.sports_comment)}</span>
-                    </div>
-                    ` : ''}
-                    ${result.daily_comment ? `
-                    <div class="comment-item">
-                        <span class="comment-label">📝 每日:</span>
-                        <span>${escapeHtml(result.daily_comment?.substring(0, 50) || '默认')}${result.daily_comment?.length > 50 ? '...' : ''}</span>
-                    </div>
-                    ` : ''}
-                </div>
-            ` : ''}
-
-            ${result.error ? `<div class="record-error">❌ ${escapeHtml(result.error)}</div>` : ''}
         </div>
     `}).join('');
+}
+
+// 渲染单个打卡类型项
+function renderRecordTypeItem(key, name, icon, detail) {
+    if (!detail) {
+        return `
+            <div class="record-type-item not-executed">
+                <div class="record-type-header">
+                    <span class="record-type-icon">${icon}</span>
+                    <span>${name}</span>
+                    <span class="record-type-status not-executed">未执行</span>
+                </div>
+            </div>
+        `;
+    }
+
+    const isSuccess = detail.success;
+    let message = '';
+    
+    if (!isSuccess) {
+        message = detail.message || detail.msg || '';
+        if (!message) {
+            const dataMsg = detail.data?.msg || detail.data?.message || '';
+            const code = detail.data?.statusCode || detail.data?.code || '';
+            message = code ? `${dataMsg} (${code})` : dataMsg;
+        }
+    } else {
+        message = detail.message || detail.msg || '完成';
+    }
+
+    const isLongMessage = message && message.length > 80;
+
+    return `
+        <div class="record-type-item ${isSuccess ? 'success' : 'failure'}">
+            <div class="record-type-header">
+                <span class="record-type-icon">${icon}</span>
+                <span>${name}</span>
+                <span class="record-type-status ${isSuccess ? 'success' : 'failure'}">${isSuccess ? '✓ 成功' : '✗ 失败'}</span>
+            </div>
+            ${message ? `
+                <div class="record-type-message ${isLongMessage ? 'truncated' : ''}" title="${escapeHtml(message)}">
+                    ${escapeHtml(message)}
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+// 切换卡片展开/收起状态
+function toggleRecordCard(cardElement) {
+    cardElement.classList.toggle('expanded');
 }
 
 // 渲染打卡结果（各类型状态）
@@ -756,9 +852,9 @@ function renderClockinResults(details) {
 function renderWeekRecords(container, weekData) {
     if (!weekData.dates || weekData.dates.length === 0) {
         container.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-icon">📊</div>
-                <div>近7天暂无打卡记录</div>
+            <div class="no-records-tip">
+                <div class="no-records-icon">📊</div>
+                <div class="no-records-text">近 7 天暂无打卡记录</div>
             </div>
         `;
         return;
@@ -774,21 +870,27 @@ function renderWeekRecords(container, weekData) {
         return `
             <div class="week-day-item">
                 <div class="week-day-header ${isToday ? 'today' : ''}">
-                    <span class="week-day-date">${dayData.date} ${dayName}</span>
-                    ${isToday ? '<span class="today-badge">今天</span>' : ''}
+                    <div>
+                        <span class="week-day-date">${dayData.date}</span>
+                        <span class="week-day-date"> ${dayName}</span>
+                        ${isToday ? '<span class="today-badge">今天</span>' : ''}
+                    </div>
                 </div>
                 ${summary ? `
                     <div class="week-day-summary">
-                        <span>总计: ${summary.total_users} 用户</span>
-                        <span class="summary-success">✓ ${summary.success_count}</span>
-                        <span class="summary-failure">✗ ${summary.failure_count}</span>
+                        <span class="summary-item">📊 总计：<strong>${summary.total_users}</strong> 用户</span>
+                        <span class="summary-item summary-success">✓ 成功 ${summary.success_count}</span>
+                        <span class="summary-item summary-failure">✗ 失败 ${summary.failure_count}</span>
                     </div>
                 ` : ''}
                 <div class="week-day-users">
                     ${results.map(result => `
                         <div class="week-user-item ${result.success ? 'success' : 'failure'}">
-                            <span>${escapeHtml(result.username)}</span>
-                            <span>${result.success ? '✓' : '✗'}</span>
+                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                <span style="font-weight: 500;">${escapeHtml(result.username)}</span>
+                                ${result.nickname ? `<span style="font-size: 11px; color: var(--text-secondary);">📌 ${escapeHtml(result.nickname)}</span>` : ''}
+                            </div>
+                            <span class="week-user-status">${result.success ? '✓' : '✗'}</span>
                         </div>
                     `).join('')}
                 </div>
