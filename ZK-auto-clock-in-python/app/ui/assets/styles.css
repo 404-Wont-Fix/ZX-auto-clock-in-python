@@ -881,6 +881,7 @@ body {
 .record-type-message.truncated {
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -888,6 +889,7 @@ body {
 
 .record-type-message:hover.truncated {
     -webkit-line-clamp: unset;
+    line-clamp: unset;
     overflow: visible;
 }
 
@@ -939,6 +941,7 @@ body {
 .comment-content.truncated {
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
