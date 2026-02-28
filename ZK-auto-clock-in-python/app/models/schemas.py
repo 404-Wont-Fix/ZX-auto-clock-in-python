@@ -200,10 +200,11 @@ class ConfigUpdateRequest(BaseModel):
     """配置更新请求"""
     clockin_api_url: Optional[str] = None
     clockin_api_token: Optional[str] = None
-    batch_size: Optional[int] = None
-    batch_delay: Optional[int] = None
-    parallel_tasks: Optional[int] = None
+    default_worker_api_id: Optional[str] = None
+    api_request_delay: Optional[int] = None
+    clockin_type_delay: Optional[int] = None
     schedule_cron: Optional[str] = None
+    schedule_enabled: Optional[bool] = None
     retention_days: Optional[int] = None
 
 

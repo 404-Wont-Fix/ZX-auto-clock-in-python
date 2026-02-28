@@ -16,6 +16,43 @@ logger = logging.getLogger(__name__)
 scheduler: Optional[AsyncIOScheduler] = None
 
 
+def parse_cron_expression(cron_expr: str):
+    """
+    解析 6 字段的 cron 表达式（秒 分 时 日 月 周）并返回 CronTrigger
+
+    Args:
+        cron_expr: cron 表达式，格式 "秒 分 时 日 月 周"
+
+    Returns:
+        CronTrigger 对象
+    """
+    parts = cron_expr.strip().split()
+
+    if len(parts) == 6:
+        # 6 字段格式: 秒 分 时 日 月 周
+        second, minute, hour, day, month, day_of_week = parts
+        return CronTrigger(
+            second=second,
+            minute=minute,
+            hour=hour,
+            day=day,
+            month=month,
+            day_of_week=day_of_week
+        )
+    elif len(parts) == 5:
+        # 5 字段格式: 分 时 日 月 周（传统 Linux cron）
+        minute, hour, day, month, day_of_week = parts
+        return CronTrigger(
+            minute=minute,
+            hour=hour,
+            day=day,
+            month=month,
+            day_of_week=day_of_week
+        )
+    else:
+        raise ValueError(f"不支持的 cron 表达式格式: {cron_expr}，期望 5 或 6 个字段")
+
+
 async def scheduled_clockin_job():
     """定时打卡任务"""
     logger.info("=== 定时打卡任务开始 ===")
@@ -80,24 +117,28 @@ def start_scheduler():
 
     scheduler = AsyncIOScheduler()
 
-    # 添加定时打卡任务
-    try:
-        scheduler.add_job(
-            scheduled_clockin_job,
-            trigger=CronTrigger.from_crontab(settings.schedule_cron),
-            id='clockin',
-            name='定时打卡任务',
-            replace_existing=True
-        )
-        logger.info(f"定时打卡任务已添加: {settings.schedule_cron}")
-    except Exception as e:
-        logger.error(f"添加定时打卡任务失败: {e}")
+    # 添加定时打卡任务（根据开关决定）
+    if settings.schedule_enabled:
+        try:
+            trigger = parse_cron_expression(settings.schedule_cron)
+            scheduler.add_job(
+                scheduled_clockin_job,
+                trigger=trigger,
+                id='clockin',
+                name='定时打卡任务',
+                replace_existing=True
+            )
+            logger.info(f"定时打卡任务已添加: {settings.schedule_cron}")
+        except Exception as e:
+            logger.error(f"添加定时打卡任务失败: {e}")
+    else:
+        logger.info("定时打卡任务已禁用（schedule_enabled = False）")
 
     # 添加清理任务（每天凌晨 3 点执行）
     try:
         scheduler.add_job(
             cleanup_job,
-            trigger=CronTrigger.from_crontab("0 3 * * *"),
+            trigger=CronTrigger(hour=3, minute=0),
             id='cleanup',
             name='清理旧数据任务',
             replace_existing=True
@@ -119,6 +160,76 @@ def stop_scheduler():
         scheduler.shutdown(wait=False)
         scheduler = None
         logger.info("调度器已停止")
+
+
+async def reload_clockin_job(cron_expression: str, enabled: bool = True):
+    """重新加载定时打卡任务
+
+    Args:
+        cron_expression: cron 表达式
+        enabled: 是否启用定时任务
+    """
+    global scheduler
+
+    if scheduler is None:
+        logger.warning("调度器未运行，无法重新加载任务")
+        return False
+
+    try:
+        # 检查任务是否存在
+        job = scheduler.get_job('clockin')
+
+        if enabled:
+            # 解析 cron 表达式并创建触发器
+            trigger = parse_cron_expression(cron_expression)
+
+            if job:
+                # 更新现有任务的触发器
+                scheduler.reschedule_job(
+                    'clockin',
+                    trigger=trigger
+                )
+                logger.info(f"定时打卡任务已更新: {cron_expression}")
+            else:
+                # 添加新任务
+                scheduler.add_job(
+                    scheduled_clockin_job,
+                    trigger=trigger,
+                    id='clockin',
+                    name='定时打卡任务',
+                    replace_existing=True
+                )
+                logger.info(f"定时打卡任务已添加: {cron_expression}")
+        else:
+            # 禁用任务：删除现有任务
+            if job:
+                scheduler.remove_job('clockin')
+                logger.info("定时打卡任务已禁用")
+            else:
+                logger.info("定时打卡任务未运行，无需禁用")
+
+        return True
+    except Exception as e:
+        logger.error(f"重新加载定时打卡任务失败: {e}", exc_info=True)
+        return False
+
+
+async def get_schedule_info():
+    """获取当前调度任务信息"""
+    global scheduler
+
+    if scheduler is None:
+        return None
+
+    job = scheduler.get_job('clockin')
+    if job:
+        return {
+            'id': job.id,
+            'name': job.name,
+            'next_run_time': job.next_run_time.isoformat() if job.next_run_time else None,
+            'trigger': str(job.trigger)
+        }
+    return None
 
 
 @asynccontextmanager

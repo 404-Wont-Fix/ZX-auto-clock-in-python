@@ -59,6 +59,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 定时刷新活动任务
     setInterval(loadActiveTasks, 3000);  // 每3秒刷新一次
+
+    // 监听定时任务配置变化
+    const scheduleTimeInput = document.getElementById('configScheduleTime');
+    const scheduleTimezoneSelect = document.getElementById('configScheduleTimezone');
+    const scheduleEnabledCheckbox = document.getElementById('configScheduleEnabled');
+
+    if (scheduleTimeInput) {
+        scheduleTimeInput.addEventListener('change', updateTimePreview);
+        scheduleTimeInput.addEventListener('input', updateTimePreview);
+    }
+
+    if (scheduleTimezoneSelect) {
+        scheduleTimezoneSelect.addEventListener('change', updateTimePreview);
+    }
+
+    if (scheduleEnabledCheckbox) {
+        scheduleEnabledCheckbox.addEventListener('change', (e) => {
+            updateScheduleConfigVisibility(e.target.checked);
+        });
+    }
 });
 
 // 加载用户列表
@@ -1353,10 +1373,44 @@ async function openConfigModal() {
         const data = await response.json();
         const config = data.data || {};
 
-        document.getElementById('configApiUrl').value = config.clockin_api_url || '';
-        document.getElementById('configApiToken').value = config.clockin_api_token || '';
-        document.getElementById('configBatchSize').value = 3;
-        document.getElementById('configBatchDelay').value = 2000;
+        // 加载基本配置
+        document.getElementById('configApiRequestDelay').value = config.api_request_delay || 500;
+        document.getElementById('configClockinTypeDelay').value = config.clockin_type_delay || 2;
+
+        // 加载定时任务开关
+        const scheduleEnabled = config.schedule_enabled !== undefined ? config.schedule_enabled : true;
+        document.getElementById('configScheduleEnabled').checked = scheduleEnabled;
+        updateScheduleConfigVisibility(scheduleEnabled);
+
+        // 加载定时任务配置（解析 cron 表达式）
+        if (config.schedule_cron) {
+            const cronParts = config.schedule_cron.trim().split(/\s+/);
+            if (cronParts.length >= 6) {
+                // Cron 格式: 秒 分 时 日 月 周（存储的是 UTC 时间）
+                const second = cronParts[0];
+                const minute = cronParts[1];
+                const hour = parseInt(cronParts[2]);
+
+                // 将 UTC 时间转换为北京时间（UTC + 8）
+                let beijingHour = hour + 8;
+                if (beijingHour >= 24) {
+                    beijingHour -= 24;
+                }
+
+                const timeStr = `${beijingHour.toString().padStart(2, '0')}:${minute.padStart(2, '0')}`;
+                document.getElementById('configScheduleTime').value = timeStr;
+
+                // 设置为北京时间模式
+                document.getElementById('configScheduleTimezone').value = 'beijing';
+            }
+        } else {
+            // 默认值：北京时间 0:10
+            document.getElementById('configScheduleTime').value = '00:10';
+            document.getElementById('configScheduleTimezone').value = 'beijing';
+        }
+
+        // 更新时间预览
+        updateTimePreview();
 
         // 加载 Worker API 列表
         await loadWorkerApis();
@@ -1367,6 +1421,55 @@ async function openConfigModal() {
 
     // 默认显示基本设置标签
     showConfigTab('general');
+}
+
+// 更新定时任务配置区域显示
+function updateScheduleConfigVisibility(enabled) {
+    const scheduleConfig = document.getElementById('scheduleConfig');
+    if (enabled) {
+        scheduleConfig.style.opacity = '1';
+        scheduleConfig.style.pointerEvents = 'auto';
+    } else {
+        scheduleConfig.style.opacity = '0.5';
+        scheduleConfig.style.pointerEvents = 'none';
+    }
+}
+
+// 快捷设置时间
+function setQuickTime(time) {
+    document.getElementById('configScheduleTime').value = time;
+    updateTimePreview();
+}
+
+// 更新时间预览
+function updateTimePreview() {
+    const timeInput = document.getElementById('configScheduleTime').value;
+    const timezone = document.getElementById('configScheduleTimezone').value;
+
+    if (!timeInput) return;
+
+    const [hour, minute] = timeInput.split(':').map(v => parseInt(v));
+
+    if (timezone === 'beijing') {
+        // 北京时间转 UTC
+        let utcHour = hour - 8;
+        if (utcHour < 0) utcHour += 24;
+
+        document.getElementById('nextRunTime').textContent = `北京时间 ${timeInput}`;
+        document.getElementById('utcTime').textContent = `${utcHour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+
+        const cronExpr = `0 ${minute} ${utcHour} * * *`;
+        document.getElementById('cronExpression').textContent = cronExpr;
+    } else {
+        // UTC 时间
+        document.getElementById('nextRunTime').textContent = `UTC 时间 ${timeInput}`;
+        let beijingHour = hour + 8;
+        if (beijingHour >= 24) beijingHour -= 24;
+        document.getElementById('utcTime').textContent = `北京时间 ${beijingHour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+
+        const cronExpr = `0 ${minute} ${hour} * * *`;
+        document.getElementById('cronExpression').textContent = cronExpr;
+    }
 }
 
 // 切换配置标签页
@@ -1392,15 +1495,17 @@ function showConfigTab(tabName) {
         loadWorkerApis();
     }
 
-    // 根据标签显示/隐藏底部按钮
+    // 根据标签显示/隐藏底部按钮（如果存在）
     const testBtn = document.getElementById('testConfigBtn');
     const saveBtn = document.getElementById('saveConfigBtn');
-    if (tabName === 'worker-apis') {
-        testBtn.style.display = 'none';
-        saveBtn.style.display = 'none';
-    } else {
-        testBtn.style.display = 'inline-flex';
-        saveBtn.style.display = 'inline-flex';
+    if (testBtn && saveBtn) {
+        if (tabName === 'worker-apis') {
+            testBtn.style.display = 'none';
+            saveBtn.style.display = 'none';
+        } else {
+            testBtn.style.display = 'inline-flex';
+            saveBtn.style.display = 'inline-flex';
+        }
     }
 }
 
@@ -1408,53 +1513,43 @@ function closeConfigModal() {
     document.getElementById('configModal').classList.remove('active');
 }
 
-async function testConfig() {
-    const apiUrl = document.getElementById('configApiUrl').value.trim();
-    const apiToken = document.getElementById('configApiToken').value.trim();
-
-    if (!apiUrl || !apiToken) {
-        showToast('请先填写 API 地址和 Token', 'error');
-        return;
-    }
-
-    try {
-        showToast('正在测试连接...', 'success');
-        const response = await fetch(`${apiUrl}/health`, {
-            headers: {
-                'Authorization': `Bearer ${apiToken}`
-            }
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            if (data.status === 'healthy') {
-                showToast('连接成功！Clockin Worker 正常运行', 'success');
-            } else {
-                showToast('连接成功，但服务状态异常', 'error');
-            }
-        } else {
-            showToast(`连接失败: HTTP ${response.status}`, 'error');
-        }
-    } catch (error) {
-        showToast(`连接失败: ${error.message}`, 'error');
-    }
-}
-
 async function saveConfig() {
-    let apiUrl = document.getElementById('configApiUrl').value.trim();
-    const apiToken = document.getElementById('configApiToken').value.trim();
+    const config = {};
 
-    // 规范化 URL
-    apiUrl = normalizeUrl(apiUrl);
+    // 获取基本配置
+    const apiRequestDelay = parseInt(document.getElementById('configApiRequestDelay').value);
+    const clockinTypeDelay = parseInt(document.getElementById('configClockinTypeDelay').value);
 
-    const config = {
-        clockin_api_url: apiUrl,
-        clockin_api_token: apiToken
-    };
+    if (!isNaN(apiRequestDelay)) {
+        config.api_request_delay = apiRequestDelay;
+    }
+    if (!isNaN(clockinTypeDelay)) {
+        config.clockin_type_delay = clockinTypeDelay;
+    }
 
-    if (!config.clockin_api_url || !config.clockin_api_token) {
-        showToast('请填写完整的配置信息', 'error');
-        return;
+    // 获取定时任务开关
+    const scheduleEnabled = document.getElementById('configScheduleEnabled').checked;
+    config.schedule_enabled = scheduleEnabled;
+
+    // 获取定时任务配置
+    const scheduleTime = document.getElementById('configScheduleTime').value;
+    const scheduleTimezone = document.getElementById('configScheduleTimezone').value;
+
+    if (scheduleTime) {
+        const [hour, minute] = scheduleTime.split(':').map(v => parseInt(v));
+
+        if (scheduleTimezone === 'beijing') {
+            // 北京时间转 UTC（减去 8 小时）
+            let utcHour = hour - 8;
+            if (utcHour < 0) {
+                utcHour += 24;
+            }
+            // Cron 格式: 秒 分 时 日 月 周
+            config.schedule_cron = `0 ${minute} ${utcHour} * * *`;
+        } else {
+            // 直接使用 UTC 时间
+            config.schedule_cron = `0 ${minute} ${hour} * * *`;
+        }
     }
 
     try {
@@ -1465,7 +1560,7 @@ async function saveConfig() {
 
         const data = await response.json();
         if (data.success) {
-            showToast('配置保存成功', 'success');
+            showToast(data.message || '配置保存成功', 'success');
             closeConfigModal();
         } else {
             showToast(data.error || '保存失败', 'error');
@@ -1605,6 +1700,9 @@ function renderWorkerApisList(apis) {
         return;
     }
 
+    // 检查是否只有一个 API（最后一个不能删除）
+    const isLastOne = apis.length === 1;
+
     container.innerHTML = apis.map(api => {
         const enabledBadge = api.enabled
             ? '<span class="worker-api-badge enabled">✓ 已启用</span>'
@@ -1618,11 +1716,24 @@ function renderWorkerApisList(apis) {
             ? Math.round((api.total_success / api.total_requests) * 100)
             : 0;
 
+        const deleteButton = isLastOne
+            ? '<button class="btn btn-sm btn-danger" disabled style="opacity: 0.5; cursor: not-allowed;" title="至少需要保留一个 Worker API">删除</button>'
+            : `<button class="btn btn-sm btn-danger" onclick="deleteWorkerApi('${api.id}', '${escapeHtml(api.name)}')">删除</button>`;
+
         return `
-            <div class="worker-api-card">
+            <div class="worker-api-card" data-api-id="${api.id}">
+                ${isLastOne ? `
+                <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 10px; margin: -10px -10px 10px -10px; border-radius: 4px 4px 0 0;">
+                    <div style="font-size: 13px; color: #856404; display: flex; align-items: center; gap: 8px;">
+                        <span>⚠️</span>
+                        <span>这是最后一个 Worker API，无法删除。请先添加新的 API 再删除此 API。</span>
+                    </div>
+                </div>
+                ` : ''}
                 <div class="worker-api-header">
                     <div class="worker-api-name">
                         ${escapeHtml(api.name)}
+                        ${!api.available ? '<span style="margin-left: 8px; font-size: 12px; color: var(--danger-color);">(已标记为不可用，点击"重置"按钮恢复)</span>' : ''}
                     </div>
                     <div class="worker-api-status">
                         ${enabledBadge}
@@ -1656,8 +1767,8 @@ function renderWorkerApisList(apis) {
                         <div class="worker-api-actions">
                             <button class="btn btn-sm" onclick="testWorkerApi('${api.id}')">测试</button>
                             <button class="btn btn-sm" onclick="editWorkerApi('${api.id}')">编辑</button>
-                            ${!api.available ? `<button class="btn btn-sm" onclick="resetWorkerApi('${api.id}')">重置</button>` : ''}
-                            <button class="btn btn-sm btn-danger" onclick="deleteWorkerApi('${api.id}', '${escapeHtml(api.name)}')">删除</button>
+                            ${!api.available ? `<button class="btn btn-sm" onclick="resetWorkerApi('${api.id}')" title="将此 API 标记为可用，恢复使用">重置</button>` : ''}
+                            ${deleteButton}
                         </div>
                     </div>
                 </div>
@@ -1782,7 +1893,7 @@ async function testWorkerApi(apiId) {
 
 // 重置 Worker API 状态
 async function resetWorkerApi(apiId) {
-    if (!confirm('确定要重置此 Worker API 的状态吗？')) {
+    if (!confirm('确定要重置此 Worker API 的状态吗？这将把 API 标记为可用，恢复使用。')) {
         return;
     }
 
@@ -1793,7 +1904,7 @@ async function resetWorkerApi(apiId) {
 
         const data = await response.json();
         if (data.success) {
-            showToast('Worker API 状态已重置', 'success');
+            showToast('Worker API 状态已重置，可以继续使用', 'success');
             loadWorkerApis();
         } else {
             showToast(data.error || '操作失败', 'error');
@@ -1801,6 +1912,93 @@ async function resetWorkerApi(apiId) {
     } catch (error) {
         if (error.message !== 'Unauthorized') {
             showToast('操作失败: ' + error.message, 'error');
+        }
+    }
+}
+
+// 批量测试所有 Worker API
+async function testAllWorkerApis() {
+    try {
+        const response = await apiRequest('/api/worker-apis');
+        const data = await response.json();
+
+        if (!data.success) {
+            showToast('获取 Worker API 列表失败', 'error');
+            return;
+        }
+
+        const apis = data.data || [];
+        if (apis.length === 0) {
+            showToast('没有可测试的 Worker API', 'error');
+            return;
+        }
+
+        showToast(`开始测试 ${apis.length} 个 Worker API...`, 'success');
+
+        const results = {
+            success: 0,
+            failed: 0,
+            details: []
+        };
+
+        // 并发测试所有 API
+        const testPromises = apis.map(api =>
+            fetch(`/api/worker-apis/${api.id}/test`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+                }
+            }).then(async res => {
+                const result = await res.json();
+                return {
+                    api: api,
+                    success: result.success,
+                    message: result.message,
+                    latency: result.latency_ms
+                };
+            }).catch(error => {
+                return {
+                    api: api,
+                    success: false,
+                    message: error.message || '测试失败'
+                };
+            })
+        );
+
+        const testResults = await Promise.all(testPromises);
+
+        // 统计结果
+        testResults.forEach(result => {
+            if (result.success) {
+                results.success++;
+            } else {
+                results.failed++;
+            }
+            results.details.push(result);
+        });
+
+        // 显示结果
+        const summary = `测试完成！成功: ${results.success}, 失败: ${results.failed}`;
+
+        // 显示详细的测试结果
+        const detailsList = results.details.map(r => {
+            const status = r.success ? '✅' : '❌';
+            const latency = r.latency ? ` (${r.latency}ms)` : '';
+            return `${status} ${r.api.name}: ${r.message}${latency}`;
+        }).join('\n');
+
+        if (results.failed === 0) {
+            showToast(`🎉 ${summary}\n\n${detailsList}`, 'success', 5000);
+        } else if (results.success === 0) {
+            showToast(`⚠️ ${summary}\n\n${detailsList}`, 'error', 5000);
+        } else {
+            showToast(`⚡ ${summary}\n\n${detailsList}`, 'success', 5000);
+        }
+
+    } catch (error) {
+        if (error.message !== 'Unauthorized') {
+            showToast('批量测试失败: ' + error.message, 'error');
         }
     }
 }
@@ -1821,7 +2019,7 @@ async function deleteWorkerApi(apiId, apiName) {
             showToast('Worker API 删除成功', 'success');
             loadWorkerApis();
         } else {
-            showToast(data.error || '删除失败', 'error');
+            showToast(data.detail || data.error || '删除失败', 'error');
         }
     } catch (error) {
         if (error.message !== 'Unauthorized') {

@@ -946,6 +946,11 @@ body {
     color: var(--danger-color);
 }
 
+.worker-api-badge.default {
+    background-color: rgba(255, 193, 7, 0.2);
+    color: #f59e0b;
+}
+
 .worker-api-info {
     display: grid;
     grid-template-columns: repeat(2, 1fr);

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ZK 多用户自动打卡系统</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=2.0">
+    <link rel="stylesheet" href="/assets/styles.css?v=3.1">
 </head>
 <body>
     <div class="container">
@@ -134,54 +134,45 @@
 
                     <!-- 运动打卡配置区域 -->
                     <div class="form-section">
-                        <div class="form-section-title">运动打卡配置</div>
-                        <div class="form-row">
-                            <div class="form-col">
-                                <div class="form-group">
-                                    <label class="form-label">备注类型</label>
-                                    <select class="form-select" id="sports_comment_type" onchange="onSportsCommentTypeChange()">
-                                        <option value="default">默认文案</option>
-                                        <option value="custom">自定义内容</option>
-                                        <option value="api">API 接口</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="form-col">
-                                <div class="form-group">
-                                    <label class="form-label">图片来源</label>
-                                    <select class="form-select" id="sports_image_type" onchange="onSportsImageTypeChange()">
-                                        <option value="default">默认图片（必应）</option>
-                                        <option value="api">API 接口</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
+                        <div class="form-section-title">🏃 运动打卡配置</div>
 
-                        <!-- 运动备注自定义内容 -->
-                        <div class="form-group" id="sports_custom_group" style="display: none;">
-                            <label class="form-label">自定义运动备注</label>
-                            <input type="text" class="form-input" id="sports_custom_comment" placeholder="请输入运动打卡备注内容">
-                            <div class="form-help">将使用此固定内容作为运动备注</div>
-                        </div>
-
-                        <!-- 运动备注API选择 -->
-                        <div class="form-row" id="sports_api_group" style="display: none;">
-                            <div class="form-col">
-                                <div class="form-group">
-                                    <label class="form-label">API 供应商</label>
-                                    <select class="form-select" id="sports_api_provider" onchange="onSportsApiProviderChange()">
-                                        <option value="jinrishici">今日诗词（推荐）</option>
-                                        <option value="cenguigui">随机一言</option>
-                                        <option value="hitokoto">一言</option>
-                                        <option value="yuanmeng">远梦API</option>
-                                        <option value="klapi">KLapi</option>
-                                    </select>
-                                </div>
+                        <!-- 备注配置 -->
+                        <div style="margin-bottom: 20px;">
+                            <label class="form-label" style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">备注配置</label>
+                            <div class="form-group">
+                                <label class="form-label">备注类型</label>
+                                <select class="form-select" id="sports_comment_type" onchange="onSportsCommentTypeChange()">
+                                    <option value="default">默认文案</option>
+                                    <option value="custom">自定义内容</option>
+                                    <option value="api">API 接口</option>
+                                </select>
                             </div>
-                            <div class="form-col" id="sports_api_category_group" style="display: none;">
-                                <div class="form-group">
-                                    <label class="form-label">诗词分类</label>
-                                    <select class="form-select" id="sports_api_jinrishici">
+
+                            <!-- 自定义备注（条件显示） -->
+                            <div class="form-group" id="sports_custom_group" style="display: none;">
+                                <label class="form-label">自定义备注内容</label>
+                                <input type="text" class="form-input" id="sports_custom_comment" placeholder="请输入运动打卡备注内容">
+                            </div>
+
+                            <!-- API配置（条件显示） -->
+                            <div id="sports_api_group" style="display: none;">
+                                <div class="form-row">
+                                    <div class="form-col">
+                                        <div class="form-group">
+                                            <label class="form-label">API 供应商</label>
+                                            <select class="form-select" id="sports_api_provider" onchange="onSportsApiProviderChange()">
+                                                <option value="jinrishici">今日诗词（推荐）</option>
+                                                <option value="cenguigui">随机一言</option>
+                                                <option value="hitokoto">一言</option>
+                                                <option value="yuanmeng">远梦API</option>
+                                                <option value="klapi">KLapi</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="form-col" id="sports_api_category_group" style="display: none;">
+                                        <div class="form-group">
+                                            <label class="form-label">诗词分类</label>
+                                            <select class="form-select" id="sports_api_jinrishici">
                                         <optgroup label="主要分类">
                                             <option value="poetry_all">全部（推荐）</option>
                                             <option value="poetry_shuqing">抒情</option>
@@ -291,8 +282,20 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
 
-                        <!-- 运动图片API选择 -->
+                    <!-- 图片配置 -->
+                    <div style="margin-bottom: 20px;">
+                        <label class="form-label" style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">图片配置</label>
+                        <div class="form-group">
+                            <label class="form-label">图片来源</label>
+                            <select class="form-select" id="sports_image_type" onchange="onSportsImageTypeChange()">
+                                <option value="default">默认图片（必应）</option>
+                                <option value="api">API 接口</option>
+                            </select>
+                        </div>
+
+                        <!-- API配置（条件显示） -->
                         <div class="form-row" id="sports_image_api_group" style="display: none;">
                             <div class="form-col">
                                 <div class="form-group">
@@ -334,29 +337,25 @@
 
                     <!-- 每日进度配置区域 -->
                     <div class="form-section">
-                        <div class="form-section-title">每日进度配置</div>
-                        <div class="form-row">
-                            <div class="form-col">
-                                <div class="form-group">
-                                    <label class="form-label">备注类型</label>
-                                    <select class="form-select" id="daily_comment_type" onchange="onDailyCommentTypeChange()">
-                                        <option value="default">默认文案</option>
-                                        <option value="custom">自定义内容</option>
-                                        <option value="api">API 接口</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="form-col"></div>
+                        <div class="form-section-title">📅 每日进度配置</div>
+
+                        <!-- 备注配置 -->
+                        <div class="form-group">
+                            <label class="form-label">备注类型</label>
+                            <select class="form-select" id="daily_comment_type" onchange="onDailyCommentTypeChange()">
+                                <option value="default">默认文案</option>
+                                <option value="custom">自定义内容</option>
+                                <option value="api">API 接口</option>
+                            </select>
                         </div>
 
-                        <!-- 自定义内容输入框 -->
+                        <!-- 自定义内容输入框（条件显示） -->
                         <div class="form-group" id="custom_content_group" style="display: none;">
                             <label class="form-label">自定义备注内容</label>
                             <textarea class="form-textarea" id="custom_daily_comment" placeholder="请输入自定义的每日进度备注内容"></textarea>
-                            <div class="form-help">将使用此固定内容作为每日备注</div>
                         </div>
 
-                        <!-- API 选择下拉框 -->
+                        <!-- API配置（条件显示） -->
                         <div class="form-row" id="api_select_group" style="display: none;">
                             <div class="form-col">
                                 <div class="form-group">
@@ -517,33 +516,71 @@
 
                 <!-- 基本设置 -->
                 <div id="config-tab-general" class="config-tab-content">
+                    <!-- API 请求延迟 -->
                     <div class="form-group">
-                        <label class="form-label">Clockin Worker 地址</label>
-                        <input type="text" class="form-input" id="configApiUrl" placeholder="check-in-api.case.con"" onblur="autoFormatUrl(this)">
-                        <div class="form-help">打卡执行器 API 地址（后备方案，可省略 https://）</div>
+                        <label class="form-label">API 请求延迟</label>
+                        <input type="number" class="form-input" id="configApiRequestDelay" value="500" min="0" max="5000" step="100">
+                        <div class="form-help">获取诗词/图片等外部 API 时的延迟（毫秒），避免请求过于频繁</div>
                     </div>
+
+                    <!-- 打卡类型间延迟 -->
                     <div class="form-group">
-                        <label class="form-label">API Token</label>
-                        <div class="password-input-wrapper">
-                            <input type="password" class="form-input" id="configApiToken" placeholder="local-dev-token-12345678">
-                            <button type="button" class="password-toggle" onclick="togglePasswordVisibility('configApiToken')" title="显示/隐藏密码">
-                                <span class="eye-icon">👁</span>
-                            </button>
+                        <label class="form-label">打卡类型间延迟</label>
+                        <input type="number" class="form-input" id="configClockinTypeDelay" value="2" min="0" max="60" step="1">
+                        <div class="form-help">首页/运动/每日打卡之间的等待时间（秒），模拟真实打卡行为</div>
+                    </div>
+
+                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                    <!-- 定时任务开关 -->
+                    <div class="form-group">
+                        <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                            <input type="checkbox" id="configScheduleEnabled" checked style="width: 20px; height: 20px;">
+                            <span style="font-size: 15px; font-weight: 500;">启用定时任务</span>
+                        </label>
+                    </div>
+                    <div id="scheduleConfig" style="transition: all 0.3s ease;">
+                        <div class="form-group">
+                            <label class="form-label">定时任务时间</label>
+                            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                                <input type="time" class="form-input" id="configScheduleTime" value="00:10" style="flex: 1;">
+                                <select class="form-input" id="configScheduleTimezone" style="width: 150px;">
+                                    <option value="beijing">北京时间</option>
+                                    <option value="utc">UTC 时间</option>
+                                </select>
+                            </div>
+                            <!-- 时间预览卡片 -->
+                            <div id="schedulePreview" style="padding: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white; font-size: 13px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <div style="opacity: 0.9; font-size: 12px; margin-bottom: 4px;">下次执行时间</div>
+                                        <div id="nextRunTime" style="font-size: 16px; font-weight: 600;">北京时间 00:10</div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="opacity: 0.9; font-size: 12px; margin-bottom: 4px;">UTC 时间</div>
+                                        <div id="utcTime" style="font-size: 14px; font-weight: 500;">16:10</div>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 11px; opacity: 0.85;">
+                                    Cron 表达式: <code id="cronExpression" style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 3px; font-family: monospace;">0 10 16 * * *</code>
+                                </div>
+                            </div>
                         </div>
-                        <div class="form-help">与 clockin-worker 的 API_TOKEN 保持一致</div>
+                        <!-- 常用时间快捷选择 -->
+                        <div style="margin-top: 10px;">
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">快捷选择：</div>
+                            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                <button class="btn" onclick="setQuickTime('00:10')" style="padding: 4px 10px; font-size: 12px;">🌙 00:10</button>
+                                <button class="btn" onclick="setQuickTime('06:00')" style="padding: 4px 10px; font-size: 12px;">🌅 06:00</button>
+                                <button class="btn" onclick="setQuickTime('08:00')" style="padding: 4px 10px; font-size: 12px;">🌄 08:00</button>
+                                <button class="btn" onclick="setQuickTime('12:00')" style="padding: 4px 10px; font-size: 12px;">☀️ 12:00</button>
+                                <button class="btn" onclick="setQuickTime('18:00')" style="padding: 4px 10px; font-size: 12px;">🌆 18:00</button>
+                                <button class="btn" onclick="setQuickTime('22:00')" style="padding: 4px 10px; font-size: 12px;">🌙 22:00</button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">批处理数量</label>
-                        <input type="number" class="form-input" id="configBatchSize" value="3" min="1" max="10">
-                        <div class="form-help">每批并行处理的用户数量</div>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">批次间延迟 (ms)</label>
-                        <input type="number" class="form-input" id="configBatchDelay" value="2000" min="0" max="10000" step="500">
-                        <div class="form-help">批次之间的等待时间（毫秒）</div>
-                    </div>
-                    <div style="padding: 12px; background: var(--bg-tertiary); border-radius: 6px; font-size: 13px; color: var(--text-secondary);">
-                        <strong>提示：</strong>配置将保存到数据库中，优先级高于环境变量。
+                    <div style="padding: 12px; background: var(--bg-tertiary); border-radius: 6px; font-size: 13px; color: var(--text-secondary); margin-top: 15px;">
+                        <strong>提示：</strong>配置将保存到数据库中，优先级高于环境变量。定时任务时间修改后会自动重新加载，无需重启。关闭开关可暂停自动打卡。Worker API 请在 "Worker API" 标签页中配置。
                     </div>
                 </div>
 
@@ -553,7 +590,10 @@
                         <div style="font-size: 14px; color: var(--text-secondary);">
                             配置多个 Worker API 实现负载均衡
                         </div>
-                        <button class="btn btn-primary" onclick="openAddWorkerApiModal()">+ 添加 Worker API</button>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn" onclick="testAllWorkerApis()">⚡ 测试全部</button>
+                            <button class="btn btn-primary" onclick="openAddWorkerApiModal()">+ 添加 Worker API</button>
+                        </div>
                     </div>
 
                     <!-- Worker API 列表 -->
@@ -565,7 +605,6 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="testConfig()" id="testConfigBtn">测试连接</button>
                 <button class="btn" onclick="closeConfigModal()">取消</button>
                 <button class="btn btn-primary" onclick="saveConfig()" id="saveConfigBtn">保存</button>
             </div>
@@ -623,6 +662,6 @@
     <!-- 提示消息 -->
     <div class="toast" id="toast"></div>
 
-    <script src="/assets/app.js?v=2.0"></script>
+    <script src="/assets/app.js?v=4.0"></script>
 </body>
 </html>

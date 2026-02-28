@@ -29,13 +29,18 @@ class Settings(BaseSettings):
     clockin_api_url: str = "https://zk-clockin-executor.xxx.workers.dev"
     clockin_api_token: str = "local-dev-token-Tian"
 
-    # 批处理配置
-    batch_size: int = 3
-    batch_delay: int = 2000  # 毫秒
-    parallel_tasks: int = 4
+    # 打卡延迟配置
+    api_request_delay: int = 500  # API 请求延迟（毫秒）：获取诗词/图片等外部 API 时的延迟
+    clockin_type_delay: int = 2  # 打卡类型间延迟（秒）：首页/运动/每日打卡之间的等待时间
+
+    # 批量打卡配置
+    batch_size: int = 3  # 每批处理的用户数量
+    batch_delay: int = 2000  # 批次间延迟（毫秒）
+    parallel_tasks: int = 4  # 并行任务数量
 
     # 定时任务配置
     schedule_cron: str = "0 10 16 * * *"  # UTC 16:10 (北京时间 0:10)
+    schedule_enabled: bool = True  # 定时任务开关
 
     # 数据保留天数
     retention_days: int = 7

@@ -48,23 +48,23 @@ class ClockinService:
         if worker_api is None:
             worker_api = await WorkerApiService.get_next_api(db)
 
-        # 如果没有可用的 Worker API，使用后备方案
-        use_fallback = False
+        # 如果没有可用的 Worker API，返回错误
         if worker_api is None:
-            logger.warning("没有可用的 Worker API，使用配置文件中的后备 API")
-            api_url = settings.clockin_api_url
-            api_token = settings.clockin_api_token
-            use_fallback = True
-            logger.info(f"[用户 {user.username}] 使用后备 API: {api_url}")
-        else:
-            api_url = worker_api.url
-            api_token = worker_api.token
-            # 记录请求统计
-            await WorkerApiService.increment_requests(db, worker_api.id)
-            logger.info(f"[用户 {user.username}] 使用 Worker API: {worker_api.name} ({api_url})")
+            logger.error("没有可用的 Worker API，请先在 Worker API 管理中添加至少一个可用的 API")
+            return {
+                'success': False,
+                'message': '没有可用的 Worker API，请先在 Worker API 管理中添加至少一个可用的 API',
+                'details': {}
+            }
+
+        api_url = worker_api.url
+        api_token = worker_api.token
+        # 记录请求统计
+        await WorkerApiService.increment_requests(db, worker_api.id)
+        logger.info(f"[用户 {user.username}] 使用 Worker API: {worker_api.name} ({api_url})")
 
         max_retries = retries
-        last_worker_api_id = worker_api.id if worker_api else None
+        last_worker_api_id = worker_api.id
         task_success = False
 
         # 记录活动任务
@@ -72,8 +72,8 @@ class ClockinService:
             user_id=user.id,
             username=user.username,
             nickname=user.nickname or user.username,
-            worker_api_id=worker_api.id if worker_api else None,
-            worker_api_name=worker_api.name if worker_api else None
+            worker_api_id=worker_api.id,
+            worker_api_name=worker_api.name
         )
 
         try:
@@ -122,8 +122,8 @@ class ClockinService:
                     if not response.is_success:
                         logger.warning(f"API 请求失败: {response.status_code}")
 
-                        # 标记失败（仅在非后备模式且非重试时）
-                        if not use_fallback and attempt == max_retries:
+                        # 标记失败（仅在非重试时）
+                        if attempt == max_retries:
                             await WorkerApiService.mark_failure(db, last_worker_api_id)
                             # 尝试切换到另一个 API
                             next_api = await WorkerApiService.get_next_api(db)
@@ -153,7 +153,7 @@ class ClockinService:
                     result['daily_comment_source'] = user.daily_comment_type
 
                     # 标记成功
-                    if not use_fallback and last_worker_api_id:
+                    if last_worker_api_id:
                         await WorkerApiService.mark_success(db, last_worker_api_id)
 
                     task_success = True
@@ -164,7 +164,7 @@ class ClockinService:
 
                     # 标记失败并尝试切换（仅在最后一次失败时）
                     if attempt == max_retries:
-                        if not use_fallback and last_worker_api_id:
+                        if last_worker_api_id:
                             await WorkerApiService.mark_failure(db, last_worker_api_id)
                             # 尝试切换到另一个 API
                             next_api = await WorkerApiService.get_next_api(db)

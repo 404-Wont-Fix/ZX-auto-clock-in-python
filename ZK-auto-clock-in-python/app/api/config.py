@@ -31,10 +31,10 @@ async def get_config(
     default_configs = {
         'clockin_api_url': settings.clockin_api_url,
         'clockin_api_token': settings.clockin_api_token,
-        'batch_size': settings.batch_size,
-        'batch_delay': settings.batch_delay,
-        'parallel_tasks': settings.parallel_tasks,
+        'api_request_delay': settings.api_request_delay,
+        'clockin_type_delay': settings.clockin_type_delay,
         'schedule_cron': settings.schedule_cron,
+        'schedule_enabled': settings.schedule_enabled,
         'retention_days': settings.retention_days,
     }
 
@@ -59,8 +59,13 @@ async def update_config(
     """更新系统配置"""
     from sqlalchemy import select
     from datetime import datetime
+    from app.core.scheduler import reload_clockin_job
 
     update_data = updates.model_dump(exclude_unset=True)
+
+    # 检查是否更新了定时任务配置
+    schedule_cron_updated = 'schedule_cron' in update_data
+    schedule_enabled_updated = 'schedule_enabled' in update_data
 
     for key, value in update_data.items():
         # 查找现有配置
@@ -76,6 +81,22 @@ async def update_config(
             config = Config(key=key, value=str(value))
             db.add(config)
 
-        await db.commit()
+    # 统一提交数据库事务
+    await db.commit()
+
+    # 如果更新了定时任务配置，重新加载调度器
+    if schedule_cron_updated or schedule_enabled_updated:
+        new_cron = update_data.get('schedule_cron', settings.schedule_cron)
+        new_enabled = update_data.get('schedule_enabled', True)
+
+        reload_success = await reload_clockin_job(new_cron, new_enabled)
+
+        if reload_success:
+            if new_enabled:
+                return SuccessResponse(success=True, message=f"配置已更新，定时任务已启用: {new_cron}")
+            else:
+                return SuccessResponse(success=True, message="配置已更新，定时任务已禁用")
+        else:
+            return SuccessResponse(success=True, message="配置已保存，但定时任务重新加载失败（请查看日志）")
 
     return SuccessResponse(success=True, message="配置已更新")

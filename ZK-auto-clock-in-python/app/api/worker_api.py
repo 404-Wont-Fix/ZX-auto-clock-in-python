@@ -120,9 +120,16 @@ async def delete_worker_api(
 ):
     """删除 Worker API"""
     try:
-        success = await WorkerApiService.delete_api(db, api_id)
+        result = await WorkerApiService.delete_api(db, api_id)
 
-        if not success:
+        if not result['success']:
+            # 如果是业务逻辑错误（如删除默认API）
+            if 'error' in result:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=result['error']
+                )
+            # 如果是找不到API
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Worker API 不存在"
@@ -132,6 +139,8 @@ async def delete_worker_api(
             success=True,
             message="Worker API 删除成功"
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"删除 Worker API 失败: {e}", exc_info=True)
         raise HTTPException(

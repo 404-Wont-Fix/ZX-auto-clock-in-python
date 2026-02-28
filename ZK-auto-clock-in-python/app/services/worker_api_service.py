@@ -130,18 +130,26 @@ class WorkerApiService:
         return api
 
     @staticmethod
-    async def delete_api(db: AsyncSession, api_id: str) -> bool:
+    async def delete_api(db: AsyncSession, api_id: str) -> dict:
         """删除 Worker API"""
+        # 检查是否为最后一个 API
+        all_apis = await WorkerApiService.get_all_apis(db)
+        if len(all_apis) <= 1:
+            return {
+                'success': False,
+                'error': '至少需要保留一个 Worker API，无法删除'
+            }
+
         api = await WorkerApiService.get_api_by_id(db, api_id)
         if not api:
-            return False
+            return {'success': False, 'error': 'Worker API 不存在'}
 
         api_name = api.name
         await db.delete(api)
         await db.commit()
 
         logger.info(f"删除 Worker API: {api_name}")
-        return True
+        return {'success': True}
 
     @staticmethod
     async def test_connection(db: AsyncSession, api_id: str) -> dict:
@@ -211,7 +219,7 @@ class WorkerApiService:
             api = available_apis[WorkerApiService._round_robin_index % len(available_apis)]
             WorkerApiService._round_robin_index += 1
 
-            logger.debug(f"选择 Worker API: {api.name} (索引: {WorkerApiService._round_robin_index - 1})")
+            logger.debug(f"选择 Worker API: {api.name} (索引: {WorkerApiService._round_robin_index - 1}, 总数: {len(available_apis)})")
             return api
 
     @staticmethod
