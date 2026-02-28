@@ -122,6 +122,7 @@ async def dashboard():
 # ==================== API 路由 ====================
 
 from app.api import auth, users, clockin, config, maintenance
+from app.api import worker_api
 
 # 认证路由（登录/登出不需要 token 验证）
 app.include_router(auth.router)
@@ -137,6 +138,9 @@ app.include_router(config.router)
 
 # 维护路由
 app.include_router(maintenance.router)
+
+# Worker API 管理路由
+app.include_router(worker_api.router)
 
 
 # ==================== 中间件：Token 验证 ====================

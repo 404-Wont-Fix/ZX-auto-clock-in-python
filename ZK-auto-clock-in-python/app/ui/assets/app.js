@@ -1219,6 +1219,32 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// 规范化 URL，确保有协议前缀且末尾无斜杠
+function normalizeUrl(url) {
+    if (!url) return url;
+    url = url.trim();
+    // 如果没有协议前缀，默认添加 https://
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://' + url;
+    }
+    // 去除末尾的斜杠
+    url = url.replace(/\/+$/, '');
+    return url;
+}
+
+// 自动格式化输入框中的 URL
+function autoFormatUrl(inputElement) {
+    const originalValue = inputElement.value.trim();
+    if (!originalValue) return;
+
+    const normalized = normalizeUrl(originalValue);
+    if (normalized !== originalValue) {
+        inputElement.value = normalized;
+        // 显示简短的提示
+        showToast('URL 已自动格式化', 'success', 1500);
+    }
+}
+
 function formatDate(dateStr) {
     const date = new Date(dateStr);
     return date.toLocaleString('zh-CN');
@@ -1257,10 +1283,51 @@ async function openConfigModal() {
         document.getElementById('configApiToken').value = config.clockin_api_token || '';
         document.getElementById('configBatchSize').value = 3;
         document.getElementById('configBatchDelay').value = 2000;
+
+        // 加载 Worker API 列表
+        await loadWorkerApis();
     } catch (error) {
         console.error('加载配置失败:', error);
     }
     document.getElementById('configModal').classList.add('active');
+
+    // 默认显示基本设置标签
+    showConfigTab('general');
+}
+
+// 切换配置标签页
+function showConfigTab(tabName) {
+    // 隐藏所有标签内容
+    document.querySelectorAll('.config-tab-content').forEach(tab => {
+        tab.style.display = 'none';
+    });
+
+    // 移除所有标签的 active 状态
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+
+    // 显示选中的标签内容
+    document.getElementById(`config-tab-${tabName}`).style.display = 'block';
+
+    // 激活选中的标签
+    document.getElementById(`tab-${tabName}`).classList.add('active');
+
+    // 如果切换到 Worker API 标签，重新加载列表
+    if (tabName === 'worker-apis') {
+        loadWorkerApis();
+    }
+
+    // 根据标签显示/隐藏底部按钮
+    const testBtn = document.getElementById('testConfigBtn');
+    const saveBtn = document.getElementById('saveConfigBtn');
+    if (tabName === 'worker-apis') {
+        testBtn.style.display = 'none';
+        saveBtn.style.display = 'none';
+    } else {
+        testBtn.style.display = 'inline-flex';
+        saveBtn.style.display = 'inline-flex';
+    }
 }
 
 function closeConfigModal() {
@@ -1300,9 +1367,15 @@ async function testConfig() {
 }
 
 async function saveConfig() {
+    let apiUrl = document.getElementById('configApiUrl').value.trim();
+    const apiToken = document.getElementById('configApiToken').value.trim();
+
+    // 规范化 URL
+    apiUrl = normalizeUrl(apiUrl);
+
     const config = {
-        clockin_api_url: document.getElementById('configApiUrl').value.trim(),
-        clockin_api_token: document.getElementById('configApiToken').value.trim()
+        clockin_api_url: apiUrl,
+        clockin_api_token: apiToken
     };
 
     if (!config.clockin_api_url || !config.clockin_api_token) {
@@ -1418,5 +1491,267 @@ async function logout() {
         localStorage.removeItem("auth_token");
         // 跳转到登录页
         window.location.href = window.ADMIN_PATH || "/admin";
+    }
+}
+
+// ==================== Worker API 管理相关函数 ====================
+
+// 加载 Worker API 列表
+async function loadWorkerApis() {
+    try {
+        const response = await apiRequest('/api/worker-apis');
+        const data = await response.json();
+
+        if (data.success) {
+            renderWorkerApisList(data.data || []);
+        } else {
+            showToast('加载 Worker API 列表失败', 'error');
+        }
+    } catch (error) {
+        if (error.message !== 'Unauthorized') {
+            console.error('加载 Worker API 列表失败:', error);
+            document.getElementById('workerApisList').innerHTML =
+                '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">加载失败</div>';
+        }
+    }
+}
+
+// 渲染 Worker API 列表
+function renderWorkerApisList(apis) {
+    const container = document.getElementById('workerApisList');
+
+    if (apis.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 60px 20px; color: var(--text-secondary);">
+                <div style="font-size: 48px; margin-bottom: 16px;">📡</div>
+                <div style="font-size: 14px; margin-bottom: 8px;">还没有配置 Worker API</div>
+                <div style="font-size: 12px; color: var(--text-muted);">点击上方"添加 Worker API"按钮开始配置</div>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = apis.map(api => {
+        const enabledBadge = api.enabled
+            ? '<span class="worker-api-badge enabled">✓ 已启用</span>'
+            : '<span class="worker-api-badge disabled">✗ 已禁用</span>';
+
+        const availableBadge = api.available
+            ? '<span class="worker-api-badge available">可用</span>'
+            : '<span class="worker-api-badge unavailable">不可用</span>';
+
+        const successRate = api.total_requests > 0
+            ? Math.round((api.total_success / api.total_requests) * 100)
+            : 0;
+
+        return `
+            <div class="worker-api-card">
+                <div class="worker-api-header">
+                    <div class="worker-api-name">
+                        ${escapeHtml(api.name)}
+                    </div>
+                    <div class="worker-api-status">
+                        ${enabledBadge}
+                        ${availableBadge}
+                    </div>
+                </div>
+                <div class="worker-api-info">
+                    <div class="worker-api-info-item">
+                        <div class="worker-api-info-label">API 地址</div>
+                        <div class="worker-api-info-value">${escapeHtml(api.url)}</div>
+                    </div>
+                    <div class="worker-api-info-item">
+                        <div class="worker-api-info-label">备注</div>
+                        <div class="worker-api-info-value">${api.note ? escapeHtml(api.note) : '-'}</div>
+                    </div>
+                </div>
+                <div class="worker-api-stats">
+                    <div class="worker-api-stat">
+                        <div class="worker-api-stat-label">总请求</div>
+                        <div class="worker-api-stat-value">${api.total_requests}</div>
+                    </div>
+                    <div class="worker-api-stat">
+                        <div class="worker-api-stat-label">成功率</div>
+                        <div class="worker-api-stat-value">${successRate}%</div>
+                    </div>
+                    <div class="worker-api-stat">
+                        <div class="worker-api-stat-label">连续失败</div>
+                        <div class="worker-api-stat-value">${api.failure_count}</div>
+                    </div>
+                    <div class="worker-api-stat" style="margin-left: auto;">
+                        <div class="worker-api-actions">
+                            <button class="btn btn-sm" onclick="testWorkerApi('${api.id}')">测试</button>
+                            <button class="btn btn-sm" onclick="editWorkerApi('${api.id}')">编辑</button>
+                            ${!api.available ? `<button class="btn btn-sm" onclick="resetWorkerApi('${api.id}')">重置</button>` : ''}
+                            <button class="btn btn-sm btn-danger" onclick="deleteWorkerApi('${api.id}', '${escapeHtml(api.name)}')">删除</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// 打开添加 Worker API 弹窗
+function openAddWorkerApiModal() {
+    document.getElementById('workerApiModalTitle').textContent = '添加 Worker API';
+    document.getElementById('workerApiId').value = '';
+    document.getElementById('workerApiName').value = '';
+    document.getElementById('workerApiUrl').value = '';
+    document.getElementById('workerApiToken').value = '';
+    document.getElementById('workerApiNote').value = '';
+    document.getElementById('workerApiEnabled').checked = true;
+    document.getElementById('workerApiModal').classList.add('active');
+}
+
+// 关闭 Worker API 弹窗
+function closeWorkerApiModal() {
+    document.getElementById('workerApiModal').classList.remove('active');
+}
+
+// 编辑 Worker API
+async function editWorkerApi(apiId) {
+    try {
+        const response = await apiRequest(`/api/worker-apis`);
+        const data = await response.json();
+
+        if (data.success) {
+            const api = data.data.find(a => a.id === apiId);
+            if (api) {
+                document.getElementById('workerApiModalTitle').textContent = '编辑 Worker API';
+                document.getElementById('workerApiId').value = api.id;
+                document.getElementById('workerApiName').value = api.name;
+                document.getElementById('workerApiUrl').value = api.url;
+                document.getElementById('workerApiToken').value = api.token;
+                document.getElementById('workerApiNote').value = api.note || '';
+                document.getElementById('workerApiEnabled').checked = api.enabled;
+                document.getElementById('workerApiModal').classList.add('active');
+            }
+        }
+    } catch (error) {
+        if (error.message !== 'Unauthorized') {
+            showToast('加载 Worker API 信息失败', 'error');
+        }
+    }
+}
+
+// 保存 Worker API
+async function saveWorkerApi() {
+    const apiId = document.getElementById('workerApiId').value;
+    const name = document.getElementById('workerApiName').value.trim();
+    let url = document.getElementById('workerApiUrl').value.trim();
+    const token = document.getElementById('workerApiToken').value.trim();
+    const note = document.getElementById('workerApiNote').value.trim();
+    const enabled = document.getElementById('workerApiEnabled').checked;
+
+    if (!name || !url || !token) {
+        showToast('请填写名称、URL 和 Token', 'error');
+        return;
+    }
+
+    // 规范化 URL
+    url = normalizeUrl(url);
+
+    try {
+        const payload = { name, url, token, note, enabled };
+
+        let response;
+        if (apiId) {
+            // 更新
+            response = await apiRequest(`/api/worker-apis/${apiId}`, {
+                method: 'PUT',
+                body: JSON.stringify(payload)
+            });
+        } else {
+            // 创建
+            response = await apiRequest('/api/worker-apis', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+        }
+
+        const data = await response.json();
+        if (data.success) {
+            showToast(apiId ? 'Worker API 更新成功' : 'Worker API 创建成功', 'success');
+            closeWorkerApiModal();
+            loadWorkerApis();
+        } else {
+            showToast(data.error || '操作失败', 'error');
+        }
+    } catch (error) {
+        if (error.message !== 'Unauthorized') {
+            showToast('操作失败: ' + error.message, 'error');
+        }
+    }
+}
+
+// 测试 Worker API 连接
+async function testWorkerApi(apiId) {
+    try {
+        showToast('正在测试连接...', 'success');
+        const response = await apiRequest(`/api/worker-apis/${apiId}/test`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            showToast(`连接成功！延迟: ${data.latency_ms}ms`, 'success');
+        } else {
+            showToast(`连接失败: ${data.message}`, 'error');
+        }
+    } catch (error) {
+        if (error.message !== 'Unauthorized') {
+            showToast('测试失败: ' + error.message, 'error');
+        }
+    }
+}
+
+// 重置 Worker API 状态
+async function resetWorkerApi(apiId) {
+    if (!confirm('确定要重置此 Worker API 的状态吗？')) {
+        return;
+    }
+
+    try {
+        const response = await apiRequest(`/api/worker-apis/${apiId}/reset`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            showToast('Worker API 状态已重置', 'success');
+            loadWorkerApis();
+        } else {
+            showToast(data.error || '操作失败', 'error');
+        }
+    } catch (error) {
+        if (error.message !== 'Unauthorized') {
+            showToast('操作失败: ' + error.message, 'error');
+        }
+    }
+}
+
+// 删除 Worker API
+async function deleteWorkerApi(apiId, apiName) {
+    if (!confirm(`确定要删除 Worker API "${apiName}" 吗？此操作不可恢复。`)) {
+        return;
+    }
+
+    try {
+        const response = await apiRequest(`/api/worker-apis/${apiId}`, {
+            method: 'DELETE'
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            showToast('Worker API 删除成功', 'success');
+            loadWorkerApis();
+        } else {
+            showToast(data.error || '删除失败', 'error');
+        }
+    } catch (error) {
+        if (error.message !== 'Unauthorized') {
+            showToast('删除失败: ' + error.message, 'error');
+        }
     }
 }

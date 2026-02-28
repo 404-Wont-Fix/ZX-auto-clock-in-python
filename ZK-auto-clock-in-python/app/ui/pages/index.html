@@ -492,45 +492,119 @@
 
     <!-- 系统设置弹窗 -->
     <div class="modal-overlay" id="configModal">
-        <div class="modal">
+        <div class="modal" style="max-width: 800px;">
             <div class="modal-header">
                 <div class="modal-title">系统设置</div>
                 <button class="modal-close" onclick="closeConfigModal()">&times;</button>
             </div>
             <div class="modal-body">
+                <!-- 标签页 -->
+                <div class="tabs" style="margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
+                    <button class="tab active" onclick="showConfigTab('general')" id="tab-general">基本设置</button>
+                    <button class="tab" onclick="showConfigTab('worker-apis')" id="tab-worker-apis">Worker API</button>
+                </div>
+
+                <!-- 基本设置 -->
+                <div id="config-tab-general" class="config-tab-content">
+                    <div class="form-group">
+                        <label class="form-label">Clockin Worker 地址</label>
+                        <input type="text" class="form-input" id="configApiUrl" placeholder="check-in-api.case.con"" onblur="autoFormatUrl(this)">
+                        <div class="form-help">打卡执行器 API 地址（后备方案，可省略 https://）</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">API Token</label>
+                        <div class="password-input-wrapper">
+                            <input type="password" class="form-input" id="configApiToken" placeholder="local-dev-token-12345678">
+                            <button type="button" class="password-toggle" onclick="togglePasswordVisibility('configApiToken')" title="显示/隐藏密码">
+                                <span class="eye-icon">👁</span>
+                            </button>
+                        </div>
+                        <div class="form-help">与 clockin-worker 的 API_TOKEN 保持一致</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">批处理数量</label>
+                        <input type="number" class="form-input" id="configBatchSize" value="3" min="1" max="10">
+                        <div class="form-help">每批并行处理的用户数量</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">批次间延迟 (ms)</label>
+                        <input type="number" class="form-input" id="configBatchDelay" value="2000" min="0" max="10000" step="500">
+                        <div class="form-help">批次之间的等待时间（毫秒）</div>
+                    </div>
+                    <div style="padding: 12px; background: var(--bg-tertiary); border-radius: 6px; font-size: 13px; color: var(--text-secondary);">
+                        <strong>提示：</strong>配置将保存到数据库中，优先级高于环境变量。
+                    </div>
+                </div>
+
+                <!-- Worker API 管理 -->
+                <div id="config-tab-worker-apis" class="config-tab-content" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <div style="font-size: 14px; color: var(--text-secondary);">
+                            配置多个 Worker API 实现负载均衡
+                        </div>
+                        <button class="btn btn-primary" onclick="openAddWorkerApiModal()">+ 添加 Worker API</button>
+                    </div>
+
+                    <!-- Worker API 列表 -->
+                    <div id="workerApisList" style="max-height: 400px; overflow-y: auto;">
+                        <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                            加载中...
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="testConfig()" id="testConfigBtn">测试连接</button>
+                <button class="btn" onclick="closeConfigModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveConfig()" id="saveConfigBtn">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加/编辑 Worker API 弹窗 -->
+    <div class="modal-overlay" id="workerApiModal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title" id="workerApiModalTitle">添加 Worker API</div>
+                <button class="modal-close" onclick="closeWorkerApiModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="workerApiId">
                 <div class="form-group">
-                    <label class="form-label">Clockin Worker 地址</label>
-                    <input type="text" class="form-input" id="configApiUrl" placeholder="http://127.0.0.1:13495">
-                    <div class="form-help">打卡执行器 API 地址</div>
+                    <label class="form-label">API 名称</label>
+                    <input type="text" class="form-input" id="workerApiName" placeholder="例如: Worker-1">
+                    <div class="form-help">为这个 API 实例起一个易于识别的名称</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">API 地址</label>
+                    <input type="text" class="form-input" id="workerApiUrl" placeholder="check-in-api.case.con" onblur="autoFormatUrl(this)">
+                    <div class="form-help">Worker API 的地址（可省略 https://，系统会自动添加）</div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">API Token</label>
                     <div class="password-input-wrapper">
-                        <input type="password" class="form-input" id="configApiToken" placeholder="local-dev-token-12345678">
-                        <button type="button" class="password-toggle" onclick="togglePasswordVisibility('configApiToken')" title="显示/隐藏密码">
+                        <input type="password" class="form-input" id="workerApiToken" placeholder="your-api-token">
+                        <button type="button" class="password-toggle" onclick="togglePasswordVisibility('workerApiToken')" title="显示/隐藏密码">
                             <span class="eye-icon">👁</span>
                         </button>
                     </div>
-                    <div class="form-help">与 clockin-worker 的 API_TOKEN 保持一致</div>
+                    <div class="form-help">与对应 Worker 的 API_TOKEN 保持一致</div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">批处理数量</label>
-                    <input type="number" class="form-input" id="configBatchSize" value="3" min="1" max="10">
-                    <div class="form-help">每批并行处理的用户数量</div>
+                    <label class="form-label">备注（可选）</label>
+                    <input type="text" class="form-input" id="workerApiNote" placeholder="例如: 主要节点">
+                    <div class="form-help">添加一些说明信息</div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">批次间延迟 (ms)</label>
-                    <input type="number" class="form-input" id="configBatchDelay" value="2000" min="0" max="10000" step="500">
-                    <div class="form-help">批次之间的等待时间（毫秒）</div>
-                </div>
-                <div style="padding: 12px; background: var(--bg-tertiary); border-radius: 6px; font-size: 13px; color: var(--text-secondary);">
-                    <strong>提示：</strong>配置将保存到 KV 存储中，优先级高于环境变量。
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="workerApiEnabled" checked>
+                        <span>启用此 API</span>
+                    </label>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn" onclick="testConfig()">测试连接</button>
-                <button class="btn" onclick="closeConfigModal()">取消</button>
-                <button class="btn btn-primary" onclick="saveConfig()">保存</button>
+                <button class="btn" onclick="closeWorkerApiModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveWorkerApi()">保存</button>
             </div>
         </div>
     </div>

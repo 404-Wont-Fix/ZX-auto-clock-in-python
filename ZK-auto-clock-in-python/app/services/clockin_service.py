@@ -10,9 +10,10 @@ import asyncio
 import httpx
 import logging
 
-from app.models.database import User, ClockinResult, DailySummary
+from app.models.database import User, ClockinResult, DailySummary, WorkerApi
 from app.services.poetry_service import PoetryService
 from app.services.user_service import UserService
+from app.services.worker_api_service import WorkerApiService
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -23,22 +24,44 @@ class ClockinService:
 
     @staticmethod
     async def call_clockin_api(
+        db: AsyncSession,
         user: User,
         triggered_by: str = 'manual',
-        retries: int = 2
+        retries: int = 1,
+        worker_api: Optional[WorkerApi] = None
     ) -> Dict:
         """
-        调用 clockin-worker API
+        调用 clockin-worker API（支持多 API 负载均衡）
 
         Args:
+            db: 数据库会话
             user: 用户对象
             triggered_by: 触发方式 (manual/scheduled)
             retries: 重试次数
+            worker_api: 指定的 Worker API（可选）
 
         Returns:
             打卡结果字典
         """
+        # 获取 Worker API（如果没有指定，则自动选择）
+        if worker_api is None:
+            worker_api = await WorkerApiService.get_next_api(db)
+
+        # 如果没有可用的 Worker API，使用后备方案
+        use_fallback = False
+        if worker_api is None:
+            logger.warning("没有可用的 Worker API，使用配置文件中的后备 API")
+            api_url = settings.clockin_api_url
+            api_token = settings.clockin_api_token
+            use_fallback = True
+        else:
+            api_url = worker_api.url
+            api_token = worker_api.token
+            # 记录请求统计
+            await WorkerApiService.increment_requests(db, worker_api.id)
+
         max_retries = retries
+        last_worker_api_id = worker_api.id if worker_api else None
 
         for attempt in range(max_retries + 1):
             try:
@@ -53,7 +76,7 @@ class ClockinService:
                 image_data = await PoetryService.get_sports_image(user)
 
                 # 构建请求
-                url = f"{settings.clockin_api_url}/clockin"
+                url = f"{api_url}/clockin"
                 request_body = {
                     "username": user.username,
                     "password": user.password,
@@ -76,7 +99,7 @@ class ClockinService:
                         json=request_body,
                         headers={
                             "Content-Type": "application/json",
-                            "Authorization": f"Bearer {settings.clockin_api_token}"
+                            "Authorization": f"Bearer {api_token}"
                         }
                     )
 
@@ -84,6 +107,17 @@ class ClockinService:
 
                 if not response.is_success:
                     logger.warning(f"API 请求失败: {response.status_code}")
+
+                    # 标记失败（仅在非后备模式且非重试时）
+                    if not use_fallback and attempt == max_retries:
+                        await WorkerApiService.mark_failure(db, last_worker_api_id)
+                        # 尝试切换到另一个 API
+                        next_api = await WorkerApiService.get_next_api(db)
+                        if next_api and next_api.id != last_worker_api_id:
+                            logger.info(f"切换到另一个 Worker API: {next_api.name}")
+                            return await ClockinService.call_clockin_api(
+                                db, user, triggered_by, 0, next_api
+                            )
 
                     # 5xx 错误重试
                     if response.status_code >= 500 or response.status_code == 429:
@@ -101,22 +135,38 @@ class ClockinService:
                 result['daily_comment'] = daily_comment
                 result['daily_comment_source'] = user.daily_comment_type
 
+                # 标记成功
+                if not use_fallback and last_worker_api_id:
+                    await WorkerApiService.mark_success(db, last_worker_api_id)
+
                 return result
 
             except Exception as e:
                 logger.warning(f"第 {attempt + 1} 次尝试失败: {e}")
 
+                # 标记失败并尝试切换（仅在最后一次失败时）
+                if attempt == max_retries:
+                    if not use_fallback and last_worker_api_id:
+                        await WorkerApiService.mark_failure(db, last_worker_api_id)
+                        # 尝试切换到另一个 API
+                        next_api = await WorkerApiService.get_next_api(db)
+                        if next_api and next_api.id != last_worker_api_id:
+                            logger.info(f"切换到另一个 Worker API: {next_api.name}")
+                            return await ClockinService.call_clockin_api(
+                                db, user, triggered_by, 0, next_api
+                            )
+
+                    # 所有 API 都不可用，返回错误
+                    return {
+                        'success': False,
+                        'error': str(e),
+                        'triggered_by': triggered_by,
+                        'timestamp': datetime.utcnow().isoformat()
+                    }
+
                 if attempt < max_retries:
                     await asyncio.sleep(2)
                     continue
-
-                # 最后一次尝试失败
-                return {
-                    'success': False,
-                    'error': str(e),
-                    'triggered_by': triggered_by,
-                    'timestamp': datetime.utcnow().isoformat()
-                }
 
     @staticmethod
     async def save_clockin_result(
@@ -242,7 +292,7 @@ class ClockinService:
                 logger.info(f"处理用户 {i + 1}/{len(users)}: {user.username}")
 
                 # 调用打卡 API
-                result = await ClockinService.call_clockin_api(user, 'manual')
+                result = await ClockinService.call_clockin_api(db, user, 'manual')
 
                 # 保存结果
                 await ClockinService.save_clockin_result(db, user, result)
@@ -305,7 +355,7 @@ class ClockinService:
 
         try:
             # 调用打卡 API
-            result = await ClockinService.call_clockin_api(user, 'manual')
+            result = await ClockinService.call_clockin_api(db, user, 'manual')
 
             # 保存结果
             await ClockinService.save_clockin_result(db, user, result)

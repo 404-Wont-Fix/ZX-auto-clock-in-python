@@ -213,6 +213,62 @@ class ConfigResponse(BaseModel):
     data: Dict[str, Any]
 
 
+# ==================== Worker API 相关 ====================
+
+class WorkerApiCreate(BaseModel):
+    """创建 Worker API 请求"""
+    name: str = Field(..., min_length=1, max_length=50)
+    url: str = Field(..., min_length=1)
+    token: str = Field(..., min_length=1)
+    note: Optional[str] = Field(None, max_length=200)
+
+
+class WorkerApiUpdate(BaseModel):
+    """更新 Worker API 请求"""
+    name: Optional[str] = Field(None, min_length=1, max_length=50)
+    url: Optional[str] = Field(None, min_length=1)
+    token: Optional[str] = Field(None, min_length=1)
+    enabled: Optional[bool] = None
+    available: Optional[bool] = None
+    note: Optional[str] = Field(None, max_length=200)
+
+
+class WorkerApiResponse(BaseModel):
+    """Worker API 响应"""
+    id: str
+    name: str
+    url: str
+    token: str
+    enabled: bool
+    available: bool
+    last_check: Optional[str] = None
+    last_success: Optional[str] = None
+    last_failure: Optional[str] = None
+    failure_count: int
+    total_requests: int
+    total_success: int
+    total_failure: int
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    note: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class WorkerApiListResponse(BaseModel):
+    """Worker API 列表响应"""
+    success: bool
+    data: List[WorkerApiResponse]
+
+
+class WorkerApiTestResponse(BaseModel):
+    """Worker API 测试响应"""
+    success: bool
+    message: str
+    latency_ms: Optional[int] = None
+
+
 # ==================== 维护相关 ====================
 
 class CleanupRequest(BaseModel):

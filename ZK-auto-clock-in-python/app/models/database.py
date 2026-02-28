@@ -282,3 +282,56 @@ class Session(Base):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'expires_at': self.expires_at.isoformat() if self.expires_at else None,
         }
+
+
+class WorkerApi(Base):
+    """Worker API 配置表"""
+    __tablename__ = 'worker_apis'
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String, nullable=False)  # API 名称
+    url = Column(String, nullable=False, unique=True)  # API 地址
+    token = Column(String, nullable=False)  # API Token
+
+    # 状态管理
+    enabled = Column(Boolean, default=True, index=True)  # 是否启用
+    available = Column(Boolean, default=True, index=True)  # 是否可用
+
+    # 统计信息
+    last_check = Column(DateTime)  # 最后检查时间
+    last_success = Column(DateTime)  # 最后成功时间
+    last_failure = Column(DateTime)  # 最后失败时间
+    failure_count = Column(Integer, default=0)  # 连续失败次数
+    total_requests = Column(Integer, default=0)  # 总请求次数
+    total_success = Column(Integer, default=0)  # 总成功次数
+    total_failure = Column(Integer, default=0)  # 总失败次数
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    note = Column(String)  # 备注信息
+
+    __table_args__ = (
+        Index('idx_worker_enabled', 'enabled'),
+        Index('idx_worker_available', 'available'),
+    )
+
+    def to_dict(self):
+        """转换为字典"""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'url': self.url,
+            'token': self.token,
+            'enabled': self.enabled,
+            'available': self.available,
+            'last_check': self.last_check.isoformat() if self.last_check else None,
+            'last_success': self.last_success.isoformat() if self.last_success else None,
+            'last_failure': self.last_failure.isoformat() if self.last_failure else None,
+            'failure_count': self.failure_count,
+            'total_requests': self.total_requests,
+            'total_success': self.total_success,
+            'total_failure': self.total_failure,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'note': self.note,
+        }

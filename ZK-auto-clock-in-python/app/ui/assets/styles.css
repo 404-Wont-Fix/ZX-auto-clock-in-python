@@ -851,3 +851,164 @@ body {
         padding: 12px;
     }
 }
+
+/* 标签页样式 */
+.tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tab {
+    padding: 10px 16px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.tab:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-tertiary);
+}
+
+.tab.active {
+    color: var(--text-primary);
+    border-bottom-color: var(--accent-color);
+    font-weight: 500;
+}
+
+.config-tab-content {
+    display: block;
+}
+
+.config-tab-content[style*="display: none"] {
+    display: none !important;
+}
+
+/* Worker API 卡片样式 */
+.worker-api-card {
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 12px;
+}
+
+.worker-api-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.worker-api-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.worker-api-status {
+    display: flex;
+    gap: 6px;
+}
+
+.worker-api-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.worker-api-badge.enabled {
+    background-color: rgba(35, 134, 54, 0.15);
+    color: var(--success-color);
+}
+
+.worker-api-badge.disabled {
+    background-color: var(--bg-hover);
+    color: var(--text-muted);
+}
+
+.worker-api-badge.available {
+    background-color: rgba(35, 134, 54, 0.15);
+    color: var(--success-color);
+}
+
+.worker-api-badge.unavailable {
+    background-color: rgba(218, 54, 51, 0.15);
+    color: var(--danger-color);
+}
+
+.worker-api-info {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 12px;
+    font-size: 13px;
+}
+
+.worker-api-info-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.worker-api-info-label {
+    color: var(--text-muted);
+    font-size: 11px;
+    margin-bottom: 2px;
+}
+
+.worker-api-info-value {
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+.worker-api-stats {
+    display: flex;
+    gap: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+    font-size: 12px;
+}
+
+.worker-api-stat {
+    display: flex;
+    flex-direction: column;
+}
+
+.worker-api-stat-label {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.worker-api-stat-value {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.worker-api-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* 复选框标签样式 */
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
