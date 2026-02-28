@@ -653,11 +653,10 @@ body {
 
 /* 卡片头部 - 主要信息 */
 .record-card-header {
-    display: grid;
-    grid-template-columns: 1fr auto auto;
-    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     padding: 14px 18px;
-    gap: 16px;
     cursor: pointer;
     user-select: none;
 }
@@ -666,11 +665,19 @@ body {
     background-color: rgba(255, 255, 255, 0.02);
 }
 
+/* 卡片头部第一行：用户信息 + 状态 + 展开 */
+.record-card-header-top {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
 /* 用户信息区域 */
 .record-user-info {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    flex: 1;
 }
 
 .record-username-row {
@@ -724,6 +731,7 @@ body {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.3px;
+    flex-shrink: 0;
 }
 
 .record-status-badge.success {
@@ -754,11 +762,20 @@ body {
     color: var(--text-secondary);
 }
 
+/* 卡片头部右侧：状态 + 展开 */
+.record-card-header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
 /* 展开/收起图标 */
 .record-expand-icon {
     font-size: 18px;
     color: var(--text-muted);
     transition: transform 0.3s ease;
+    flex-shrink: 0;
 }
 
 .record-card.expanded .record-expand-icon {
@@ -1846,16 +1863,18 @@ body {
 /* ==================== 打卡记录响应式布局 ==================== */
 @media (max-width: 768px) {
     .record-card-header {
-        grid-template-columns: 1fr;
-        gap: 12px;
+        gap: 10px;
     }
 
-    .record-status-badge {
-        justify-self: start;
+    .record-card-header-top {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
     }
 
-    .record-expand-icon {
-        justify-self: end;
+    .record-card-header-right {
+        width: 100%;
+        justify-content: space-between;
     }
 
     .record-meta-row {
@@ -1865,6 +1884,7 @@ body {
 
     .record-types-grid {
         grid-template-columns: 1fr;
+        margin-top: 12px;
     }
 }
 

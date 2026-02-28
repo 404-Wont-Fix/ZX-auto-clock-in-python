@@ -670,46 +670,50 @@ function renderDayRecords(container, results) {
         return `
         <div class="record-card ${isSuccess ? 'success' : 'failure'}" data-record-id="${result.id}" onclick="toggleRecordCard(this)">
             <div class="record-card-header">
-                <div class="record-user-info">
-                    <div class="record-username-row">
-                        <span class="record-username">${escapeHtml(result.username)}</span>
-                        ${result.nickname ? `<span class="record-nickname-tag">📌 ${escapeHtml(result.nickname)}</span>` : ''}
+                <div class="record-card-header-top">
+                    <div class="record-user-info">
+                        <div class="record-username-row">
+                            <span class="record-username">${escapeHtml(result.username)}</span>
+                            ${result.nickname ? `<span class="record-nickname-tag">📌 ${escapeHtml(result.nickname)}</span>` : ''}
+                        </div>
+                        <div class="record-meta-row">
+                            <span class="record-meta-item">
+                                <span>🕐</span>
+                                <span class="record-time">${timeStr}</span>
+                            </span>
+                            ${durationStr ? `
+                            <span class="record-meta-item record-duration-badge">
+                                <span>⏱</span>
+                                <span>${durationStr}</span>
+                            </span>
+                            ` : ''}
+                            <span class="record-trigger-badge">
+                                <span>${isScheduled ? '🤖' : '👤'}</span>
+                                <span>${isScheduled ? '定时' : '手动'}</span>
+                            </span>
+                        </div>
                     </div>
-                    <div class="record-meta-row">
-                        <span class="record-meta-item">
-                            <span>🕐</span>
-                            <span class="record-time">${timeStr}</span>
-                        </span>
-                        ${durationStr ? `
-                        <span class="record-meta-item record-duration-badge">
-                            <span>⏱</span>
-                            <span>${durationStr}</span>
-                        </span>
-                        ` : ''}
-                        <span class="record-trigger-badge">
-                            <span>${isScheduled ? '🤖' : '👤'}</span>
-                            <span>${isScheduled ? '定时' : '手动'}</span>
-                        </span>
+                    
+                    <div class="record-card-header-right">
+                        <div class="record-status-badge ${isSuccess ? 'success' : 'failure'}">
+                            <span class="status-icon">${isSuccess ? '✓' : '✗'}</span>
+                            <span>${isSuccess ? '成功' : '失败'}</span>
+                        </div>
+                        <div class="record-expand-icon">▼</div>
                     </div>
                 </div>
                 
-                <div class="record-status-badge ${isSuccess ? 'success' : 'failure'}">
-                    <span class="status-icon">${isSuccess ? '✓' : '✗'}</span>
-                    <span>${isSuccess ? '成功' : '失败'}</span>
+                ${details && typeof details === 'object' ? `
+                <div class="record-types-grid">
+                    ${renderRecordTypeItem('home', '首页签到', '🏠', details.home)}
+                    ${renderRecordTypeItem('sports', '运动打卡', '🏃', details.sports)}
+                    ${renderRecordTypeItem('daily', '每日进度', '📝', details.daily)}
                 </div>
-                
-                <div class="record-expand-icon">▼</div>
+                ` : ''}
             </div>
             
             <div class="record-card-body">
                 <div class="record-card-content">
-                    ${details && typeof details === 'object' ? `
-                        <div class="record-types-grid">
-                            ${renderRecordTypeItem('home', '首页签到', '🏠', details.home)}
-                            ${renderRecordTypeItem('sports', '运动打卡', '🏃', details.sports)}
-                            ${renderRecordTypeItem('daily', '每日进度', '📝', details.daily)}
-                        </div>
-                    ` : ''}
                     
                     ${(result.sports_comment || result.daily_comment) ? `
                         <div class="record-comments-section">
