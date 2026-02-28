@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ZK 多用户自动打卡系统</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=3.1">
+    <link rel="stylesheet" href="/assets/styles.css?v=4.0">
 </head>
 <body>
     <div class="container">
@@ -18,21 +18,41 @@
 
         <!-- 统计卡片 -->
         <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-label">总用户数</div>
-                <div class="stat-value" id="statTotalUsers">-</div>
+            <div class="stat-card stat-card-gradient-1">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="stat-icon">👥</div>
+                    <div style="flex: 1;">
+                        <div class="stat-label">总用户数</div>
+                        <div class="stat-value" id="statTotalUsers">-</div>
+                    </div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">已启用</div>
-                <div class="stat-value" id="statEnabledUsers">-</div>
+            <div class="stat-card stat-card-gradient-2">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="stat-icon">✅</div>
+                    <div style="flex: 1;">
+                        <div class="stat-label">已启用</div>
+                        <div class="stat-value" id="statEnabledUsers">-</div>
+                    </div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">今日成功</div>
-                <div class="stat-value" id="statTodaySuccess">-</div>
+            <div class="stat-card stat-card-gradient-3">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="stat-icon">🎯</div>
+                    <div style="flex: 1;">
+                        <div class="stat-label">今日成功</div>
+                        <div class="stat-value" id="statTodaySuccess">-</div>
+                    </div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">今日失败</div>
-                <div class="stat-value" id="statTodayFailure">-</div>
+            <div class="stat-card stat-card-gradient-4">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div class="stat-icon">⚠️</div>
+                    <div style="flex: 1;">
+                        <div class="stat-label">今日失败</div>
+                        <div class="stat-value" id="statTodayFailure">-</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -110,14 +130,14 @@
                             <div class="form-col">
                                 <div class="form-group">
                                     <label class="form-label">用户名 *</label>
-                                    <input type="text" class="form-input" id="username" required>
+                                    <input type="text" class="form-input" id="username" name="username" required>
                                 </div>
                             </div>
                             <div class="form-col">
                                 <div class="form-group">
                                     <label class="form-label">密码 *</label>
                                     <div class="password-input-wrapper">
-                                        <input type="password" class="form-input" id="password" required>
+                                        <input type="password" class="form-input" id="password" name="password" required>
                                         <button type="button" class="password-toggle" onclick="togglePasswordVisibility('password')" title="显示/隐藏密码">
                                             <span class="eye-icon">👁</span>
                                         </button>

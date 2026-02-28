@@ -45,14 +45,19 @@ body {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 32px;
-    padding-bottom: 24px;
-    border-bottom: 1px solid var(--border-color);
+    padding: 24px;
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
 }
 
 .header h1 {
-    font-size: 24px;
-    font-weight: 600;
-    color: var(--text-primary);
+    font-size: 26px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 .header .subtitle {
@@ -64,16 +69,68 @@ body {
 /* 统计卡片 */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 16px;
     margin-bottom: 32px;
 }
 
 .stat-card {
-    background-color: var(--bg-secondary);
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 16px;
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+/* 渐变样式 */
+.stat-card-gradient-1 {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+}
+
+.stat-card-gradient-2 {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    border: none;
+}
+
+.stat-card-gradient-3 {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    border: none;
+}
+
+.stat-card-gradient-4 {
+    background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+    border: none;
+}
+
+/* 渐变卡片的文字颜色 */
+.stat-card-gradient-1 .stat-label,
+.stat-card-gradient-1 .stat-value,
+.stat-card-gradient-2 .stat-label,
+.stat-card-gradient-2 .stat-value,
+.stat-card-gradient-3 .stat-label,
+.stat-card-gradient-3 .stat-value,
+.stat-card-gradient-4 .stat-label,
+.stat-card-gradient-4 .stat-value {
+    color: white;
+}
+
+.stat-icon {
+    font-size: 32px;
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
 }
 
 .stat-label {
@@ -102,29 +159,39 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 16px;
+    padding: 10px 18px;
     font-size: 14px;
     font-weight: 500;
-    border-radius: 6px;
+    border-radius: 8px;
     border: 1px solid var(--border-color);
     background-color: var(--bg-secondary);
     color: var(--text-primary);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .btn:hover {
     background-color: var(--bg-tertiary);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .btn-primary {
-    background-color: var(--accent-color);
-    border-color: rgba(240, 246, 252, 0.1);
+    background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-hover) 100%);
+    border-color: transparent;
     color: white;
+    box-shadow: 0 4px 12px rgba(35, 134, 54, 0.3);
 }
 
 .btn-primary:hover {
-    background-color: var(--accent-hover);
+    background: linear-gradient(135deg, var(--accent-hover) 0%, #2ea44f 100%);
+    box-shadow: 0 6px 16px rgba(35, 134, 54, 0.4);
 }
 
 .btn-danger {
@@ -144,10 +211,22 @@ body {
 
 /* 用户列表 */
 .section-title {
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 600;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
     color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.section-title::before {
+    content: '';
+    display: block;
+    width: 4px;
+    height: 20px;
+    background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-hover) 100%);
+    border-radius: 2px;
 }
 
 .user-list {
@@ -1021,10 +1100,11 @@ body {
 /* 活动任务部分 */
 .active-tasks-section {
     margin-bottom: 32px;
-    padding: 16px;
-    background-color: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
+    padding: 20px;
+    background: linear-gradient(135deg, rgba(35, 134, 54, 0.1) 0%, rgba(46, 160, 67, 0.05) 100%);
+    border: 1px solid var(--accent-color);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(35, 134, 54, 0.1);
 }
 
 .active-tasks-list {
