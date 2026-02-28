@@ -82,33 +82,39 @@ except Exception:
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """根路径返回 404"""
+    """根路径返回 nginx 欢迎页（伪装）"""
     html_file = "app/ui/pages/404.html"
     try:
         with open(html_file, 'r', encoding='utf-8') as f:
             return f.read()
     except FileNotFoundError:
-        return "<h1>404 Not Found</h1>"
+        return "<h1>Welcome to nginx!</h1>"
 
 
-@app.get("/admin", response_class=HTMLResponse)
-async def admin():
-    """管理面板入口（显示登录页）"""
+@app.get(f"/{settings.admin_path}", response_class=HTMLResponse)
+async def admin_login():
+    """管理面板入口（显示登录页）- 路径可通过环境变量配置"""
     html_file = "app/ui/pages/login.html"
     try:
         with open(html_file, 'r', encoding='utf-8') as f:
-            return f.read()
+            content = f.read()
+        # 注入 admin_path 到 HTML
+        script = f'<script>window.ADMIN_PATH = "/{settings.admin_path}";</script>'
+        return content.replace('</head>', f'{script}</head>')
     except FileNotFoundError:
         return "<h1>Login not found</h1>"
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
-    """管理面板"""
+    """管理面板（需要认证）"""
     html_file = "app/ui/pages/index.html"
     try:
         with open(html_file, 'r', encoding='utf-8') as f:
-            return f.read()
+            content = f.read()
+        # 注入 admin_path 到 HTML
+        script = f'<script>window.ADMIN_PATH = "/{settings.admin_path}";</script>'
+        return content.replace('</head>', f'{script}</head>')
     except FileNotFoundError:
         return "<h1>Dashboard not found</h1>"
 
@@ -163,8 +169,37 @@ async def health_check():
 
 # ==================== 异常处理 ====================
 
-from fastapi.exceptions import RequestValidationError
+from fastapi.exceptions import RequestValidationError, StarletteHTTPException
 from fastapi.responses import JSONResponse
+
+
+@app.exception_handler(StarletteHTTPException)
+async def not_found_exception_handler(request: Request, exc: StarletteHTTPException):
+    """处理 404 错误"""
+    if exc.status_code == 404:
+        # API 路径返回 JSON 错误
+        if request.url.path.startswith("/api/"):
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "error": "API 端点不存在"}
+            )
+        # 静态资源路径返回 404
+        if request.url.path.startswith("/assets/"):
+            return JSONResponse(
+                status_code=404,
+                content={"success": False, "error": "静态资源不存在"}
+            )
+        # 其他路径返回 nginx 欢迎页（伪装）
+        html_file = "app/ui/pages/404.html"
+        try:
+            with open(html_file, 'r', encoding='utf-8') as f:
+                return HTMLResponse(content=f.read(), status_code=200)
+        except FileNotFoundError:
+            return HTMLResponse(content="<h1>Welcome to nginx!</h1>", status_code=200)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"success": False, "error": exc.detail}
+    )
 
 
 @app.exception_handler(RequestValidationError)

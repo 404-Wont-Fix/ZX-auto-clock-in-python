@@ -34,7 +34,7 @@ async function apiRequest(url, options = {}) {
     if (response.status === 401) {
         showToast('登录已过期，请重新登录', 'error');
         setTimeout(() => {
-            window.location.href = '/admin';
+            window.location.href = window.ADMIN_PATH || '/admin';
         }, 1500);
         throw new Error('Unauthorized');
     }
@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const token = localStorage.getItem('auth_token');
     if (!token) {
         console.log('[认证] 未找到 token，跳转到登录页');
-        window.location.href = '/admin';
+        window.location.href = window.ADMIN_PATH || '/admin';
         return;
     }
 
@@ -1417,6 +1417,6 @@ async function logout() {
         // 清除本地 token
         localStorage.removeItem("auth_token");
         // 跳转到登录页
-        window.location.href = "/admin";
+        window.location.href = window.ADMIN_PATH || "/admin";
     }
 }

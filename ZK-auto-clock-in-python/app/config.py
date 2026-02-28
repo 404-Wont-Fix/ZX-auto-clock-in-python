@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "admin"
 
+    # 管理员路径配置（安全功能：隐藏真实管理路径）
+    admin_path: str = "admin"  # 设置为自定义路径，如 "my-secret-admin"
+
     # 数据库配置
     database_url: str = "sqlite:///database/zk_admin.db"
 
