@@ -6,7 +6,7 @@ services:
     container_name: zk-admin
     restart: always  # 自动重启：崩溃时自动重启
     ports:
-      - "8000:8000"
+      - "8032:8000"
     volumes:
       # 数据持久化
       - ./database:/app/database
