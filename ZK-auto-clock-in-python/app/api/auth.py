@@ -1,17 +1,19 @@
 """
 认证 API
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timedelta
 from typing import Optional
+import logging
 
 from app.core.database import get_db
 from app.core.security import create_access_token, generate_session_token, decode_access_token
 from app.models.database import Session as DBSession
 from app.models.schemas import LoginRequest, LoginResponse, ErrorResponse, SuccessResponse
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 
 
@@ -53,12 +55,17 @@ async def login(
 @router.post("/logout", response_model=SuccessResponse)
 async def logout(
     db: AsyncSession = Depends(get_db),
-    token: Optional[str] = Query(None, alias="token")
+    authorization: Optional[str] = Header(None)
 ):
     """管理员登出"""
-    if not token:
-        # 尝试从 header 获取
-        raise HTTPException(status_code=401, detail="Token 缺失")
+    # 从 Authorization header 获取 token
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.replace("Bearer ", "")
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token 缺失或格式错误"
+        )
 
     # 删除 session
     from sqlalchemy import delete
@@ -67,17 +74,24 @@ async def logout(
     )
     await db.commit()
 
+    logger.info(f"User logged out, token: {token[:10]}...")
     return SuccessResponse(success=True, message="已登出")
 
 
 @router.get("/me", response_model=SuccessResponse)
 async def get_current_user(
     db: AsyncSession = Depends(get_db),
-    token: Optional[str] = Query(None, alias="token")
+    authorization: Optional[str] = Header(None)
 ):
     """获取当前用户信息"""
-    if not token:
-        raise HTTPException(status_code=401, detail="Token 缺失")
+    # 从 Authorization header 获取 token
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.replace("Bearer ", "")
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token 缺失或格式错误"
+        )
 
     # 验证 token
     result = await db.execute(
@@ -104,19 +118,21 @@ async def get_current_user(
     )
 
 
-# 依赖：验证 token（从查询参数或 header 获取）
+# 依赖：验证 token（从 Authorization header 获取）
 async def verify_session(
-    token: Optional[str] = Query(None, alias="token"),
+    authorization: Optional[str] = Header(None),
     db: AsyncSession = Depends(get_db)
 ) -> DBSession:
     """验证会话令牌"""
-    print(f"[Auth] verify_session called, token: {token[:10] if token else 'None'}...")
-
-    if not token:
-        print("[Auth] Token 缺失")
+    # 从 Authorization header 获取 token
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.replace("Bearer ", "")
+        logger.debug(f"verify_session called, token: {token[:10]}...")
+    else:
+        logger.warning("verify_session called without valid Authorization header")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token 缺失"
+            detail="Token 缺失或格式错误，需要使用 Authorization: Bearer <token>"
         )
 
     from sqlalchemy import select
@@ -130,11 +146,11 @@ async def verify_session(
     session = result.scalar_one_or_none()
 
     if not session:
-        print(f"[Auth] Session not found or expired for token: {token[:10]}...")
+        logger.warning(f"Session not found or expired for token: {token[:10]}...")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="未授权"
+            detail="Token 无效或已过期"
         )
 
-    print(f"[Auth] Session found for user: {session.username}")
+    logger.debug(f"Session verified for user: {session.username}")
     return session

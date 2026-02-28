@@ -21,15 +21,14 @@ async function apiRequest(url, options = {}) {
         }
     };
 
-    // 如果有 token，添加到 URL 参数中
-    let finalUrl = url;
-    if (token && !url.includes('token=')) {
-        finalUrl = url.includes('?') ? `${url}&token=${token}` : `${url}?token=${token}`;
+    // 如果有 token，添加到 Authorization header
+    if (token) {
+        defaultOptions.headers['Authorization'] = `Bearer ${token}`;
     }
 
     const mergedOptions = { ...defaultOptions, ...options };
 
-    const response = await fetch(finalUrl, mergedOptions);
+    const response = await fetch(url, mergedOptions);
 
     // 检查 401 未授权
     if (response.status === 401) {
@@ -1405,8 +1404,12 @@ function autoFillPassword(event) {
 async function logout() {
     try {
         const token = localStorage.getItem("auth_token");
-        await fetch("/api/auth/logout?token=" + token, {
-            method: "POST"
+        await fetch("/api/auth/logout", {
+            method: "POST",
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            }
         });
     } catch (error) {
         console.error("登出请求失败:", error);

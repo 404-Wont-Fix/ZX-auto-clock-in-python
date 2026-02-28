@@ -12,6 +12,16 @@ function delay(ms) {
 }
 
 /**
+ * 简单日志工具（与worker.js保持一致的日志风格）
+ */
+const authLogger = {
+    info: (...args) => console.log(`[AUTH INFO] ${new Date().toISOString()}`, ...args),
+    warn: (...args) => console.warn(`[AUTH WARN] ${new Date().toISOString()}`, ...args),
+    error: (...args) => console.error(`[AUTH ERROR] ${new Date().toISOString()}`, ...args),
+    debug: (...args) => console.log(`[AUTH DEBUG] ${new Date().toISOString()}`, ...args)
+};
+
+/**
  * 获取登录 token（带重试机制）
  */
 export async function getLoginToken(credentials, maxRetries = 3) {
@@ -20,7 +30,7 @@ export async function getLoginToken(credentials, maxRetries = 3) {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
             if (attempt > 0) {
-                console.log(`[登录] 第 ${attempt + 1} 次尝试: ${username}`);
+                authLogger.info(`第 ${attempt + 1} 次尝试: ${username}`);
                 await delay(1000 * attempt); // 递增延迟：1s, 2s, 3s
             }
 
@@ -45,14 +55,14 @@ export async function getLoginToken(credentials, maxRetries = 3) {
                             const tenantData = JSON.parse(responseText);
                             tenantId = tenantData[0]?.id || '32';
                         } catch (e) {
-                            console.warn(`解析租户信息失败: ${e.message}, 使用默认租户ID`);
+                            authLogger.warn(`解析租户信息失败: ${e.message}, 使用默认租户ID`);
                         }
                     }
                 } else {
-                    console.warn(`获取租户信息失败: ${tenantResponse.status}, 使用默认租户ID`);
+                    authLogger.warn(`获取租户信息失败: ${tenantResponse.status}, 使用默认租户ID`);
                 }
             } catch (tenantError) {
-                console.warn(`获取租户信息异常: ${tenantError.message}, 使用默认租户ID`);
+                authLogger.warn(`获取租户信息异常: ${tenantError.message}, 使用默认租户ID`);
             }
 
             // 构建登录请求
@@ -81,11 +91,11 @@ export async function getLoginToken(credentials, maxRetries = 3) {
             // 检查响应状态
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error(`[登录] 请求失败: ${response.status}, ${errorText}`);
+                authLogger.error(`请求失败: ${response.status}, ${errorText}`);
 
                 // 如果是 5xx 错误且还有重试次数，则重试
                 if (response.status >= 500 && attempt < maxRetries - 1) {
-                    console.log(`[登录] 服务器错误，将重试...`);
+                    authLogger.info('服务器错误，将重试...');
                     continue;
                 }
 
@@ -100,11 +110,11 @@ export async function getLoginToken(credentials, maxRetries = 3) {
                 };
             }
 
-            console.log(`[登录] 成功: ${username}`);
+            authLogger.info(`登录成功: ${username}`);
             return response;
 
         } catch (error) {
-            console.error(`[登录] 第 ${attempt + 1} 次尝试失败:`, error.message);
+            authLogger.error(`第 ${attempt + 1} 次尝试失败:`, error.message);
 
             // 如果是最后一次尝试，返回错误
             if (attempt === maxRetries - 1) {
@@ -120,7 +130,7 @@ export async function getLoginToken(credentials, maxRetries = 3) {
             }
 
             // 否则继续重试
-            console.log(`[登录] 将在 ${1000 * (attempt + 1)}ms 后重试...`);
+            authLogger.info(`将在 ${1000 * (attempt + 1)}ms 后重试...`);
         }
     }
 }

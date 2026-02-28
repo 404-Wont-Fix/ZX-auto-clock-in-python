@@ -8,11 +8,14 @@ from datetime import datetime, timedelta, timezone
 import json
 import asyncio
 import httpx
+import logging
 
 from app.models.database import User, ClockinResult, DailySummary
 from app.services.poetry_service import PoetryService
 from app.services.user_service import UserService
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class ClockinService:
@@ -40,7 +43,7 @@ class ClockinService:
         for attempt in range(max_retries + 1):
             try:
                 if attempt > 0:
-                    print(f"[ClockinService] 重试第 {attempt} 次: {user.username}")
+                    logger.info(f"重试第 {attempt} 次: {user.username}")
 
                 # 获取备注内容
                 daily_comment = await PoetryService.get_daily_comment(user)
@@ -80,7 +83,7 @@ class ClockinService:
                 duration = (datetime.now() - start_time).total_seconds() * 1000
 
                 if not response.is_success:
-                    print(f"[ClockinService] API 请求失败: {response.status_code}")
+                    logger.warning(f"API 请求失败: {response.status_code}")
 
                     # 5xx 错误重试
                     if response.status_code >= 500 or response.status_code == 429:
@@ -101,7 +104,7 @@ class ClockinService:
                 return result
 
             except Exception as e:
-                print(f"[ClockinService] 第 {attempt + 1} 次尝试失败: {e}")
+                logger.warning(f"第 {attempt + 1} 次尝试失败: {e}")
 
                 if attempt < max_retries:
                     await asyncio.sleep(2)
@@ -228,7 +231,7 @@ class ClockinService:
                 'failure': 0
             }
 
-        print(f"[ClockinService] 开始串行处理 {len(users)} 个用户的打卡")
+        logger.info(f"开始串行处理 {len(users)} 个用户的打卡")
 
         success_count = 0
         failure_count = 0
@@ -236,7 +239,7 @@ class ClockinService:
 
         for i, user in enumerate(users):
             try:
-                print(f"[ClockinService] 处理用户 {i + 1}/{len(users)}: {user.username}")
+                logger.info(f"处理用户 {i + 1}/{len(users)}: {user.username}")
 
                 # 调用打卡 API
                 result = await ClockinService.call_clockin_api(user, 'manual')
@@ -265,11 +268,11 @@ class ClockinService:
 
                 # 用户间延迟3秒（避免速率限制）
                 if i < len(users) - 1:  # 最后一个用户不需要延迟
-                    print(f"[ClockinService] 等待3秒后处理下一个用户...")
+                    logger.debug("等待3秒后处理下一个用户...")
                     await asyncio.sleep(3)
 
             except Exception as e:
-                print(f"[ClockinService] 用户 {user.username} 打卡失败: {e}")
+                logger.error(f"用户 {user.username} 打卡失败: {e}")
                 failure_count += 1
                 results.append({
                     'username': user.username,
@@ -277,7 +280,7 @@ class ClockinService:
                     'error': str(e)
                 })
 
-        print(f"[ClockinService] 完成: 成功 {success_count}, 失败 {failure_count}")
+        logger.info(f"完成: 成功 {success_count}, 失败 {failure_count}")
 
         return {
             'status': 'completed',
@@ -324,9 +327,7 @@ class ClockinService:
             return result
 
         except Exception as e:
-            import traceback
-            print(f"[错误] trigger_user: {e}")
-            print(traceback.format_exc())
+            logger.error(f"trigger_user 失败: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
 
     @staticmethod

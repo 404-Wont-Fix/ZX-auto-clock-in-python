@@ -4,6 +4,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
+import logging
 
 from app.core.database import get_db
 from app.api.auth import verify_session
@@ -19,40 +20,30 @@ from app.models.schemas import (
 )
 from app.services.user_service import UserService
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/users", tags=["用户管理"])
 
 
-@router.get("")
+@router.get("", response_model=UserListResponse)
 async def get_users(
     db: AsyncSession = Depends(get_db),
     session: DBSession = Depends(verify_session)
 ):
     """获取所有用户"""
     try:
-        print("[DEBUG] 开始获取用户列表")
         users = await UserService.get_users(db)
-        print(f"[DEBUG] 获取到 {len(users)} 个用户")
 
         user_list = []
         for user in users:
-            print(f"[DEBUG] 处理用户: {user.username}")
             user_dict = user.to_dict()
             user_list.append(user_dict)
 
-        print(f"[DEBUG] 准备返回 {len(user_list)} 个用户")
-
-        from app.models.schemas import UserListResponse
-        response = UserListResponse(
+        return UserListResponse(
             success=True,
             data=user_list
         )
-        print(f"[DEBUG] 响应对象创建成功")
-
-        return response
     except Exception as e:
-        import traceback
-        print(f"[错误] 获取用户列表失败: {e}")
-        print(traceback.format_exc())
+        logger.error(f"获取用户列表失败: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"获取用户列表失败: {str(e)}"

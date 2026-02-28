@@ -6,12 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete, select
 from datetime import datetime, timedelta
 import os
+import logging
+import shutil
 
 from app.core.database import get_db
 from app.api.auth import verify_session
 from app.models.database import Session as DBSession, ClockinResult, DailySummary
-from app.models.schemas import CleanupRequest, CleanupResponse, HealthResponse
+from app.models.schemas import CleanupRequest, CleanupResponse, SuccessResponse
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/maintenance", tags=["维护"])
 
 
@@ -57,15 +60,12 @@ async def cleanup_old_records(
     )
 
 
-@router.post("/backup")
+@router.post("/backup", response_model=SuccessResponse)
 async def backup_database(
     db: AsyncSession = Depends(get_db),
     session: DBSession = Depends(verify_session)
 ):
     """备份数据库"""
-    import shutil
-    from datetime import datetime
-
     try:
         # 数据库文件路径
         db_file = "database/zk_admin.db"
@@ -78,35 +78,29 @@ async def backup_database(
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_file = f"{backup_dir}/zk_admin_{timestamp}.db"
 
+        # 检查数据库文件是否存在
+        if not os.path.exists(db_file):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="数据库文件不存在"
+            )
+
         # 复制文件
-        if os.path.exists(db_file):
-            shutil.copy2(db_file, backup_file)
-            return {"success": True, "message": f"备份已创建: {backup_file}"}
-        else:
-            return {"success": False, "message": "数据库文件不存在"}
+        shutil.copy2(db_file, backup_file)
+        logger.info(f"数据库备份成功: {backup_file}")
 
-    except Exception as e:
-        return {"success": False, "message": f"备份失败: {str(e)}"}
-
-
-@router.get("/health", response_model=HealthResponse)
-async def health_check(db: AsyncSession = Depends(get_db)):
-    """健康检查"""
-    try:
-        # 测试数据库连接
-        from sqlalchemy import text
-        await db.execute(text("SELECT 1"))
-
-        return HealthResponse(
-            status="healthy",
-            timestamp=datetime.utcnow().isoformat(),
-            service="zk-admin",
-            database="connected"
+        return SuccessResponse(
+            success=True,
+            message=f"备份已创建: {backup_file}",
+            data={"backup_file": backup_file}
         )
+
+    except HTTPException:
+        raise
     except Exception as e:
-        return HealthResponse(
-            status="unhealthy",
-            timestamp=datetime.utcnow().isoformat(),
-            service="zk-admin",
-            database=f"error: {str(e)}"
+        logger.error(f"数据库备份失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"备份失败: {str(e)}"
         )
+
