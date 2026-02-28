@@ -36,6 +36,17 @@
             </div>
         </div>
 
+        <!-- 活动任务 -->
+        <div class="active-tasks-section" id="activeTasksSection" style="display: none;">
+            <div class="section-header">
+                <h2 class="section-title">🔄 正在执行的任务 <span id="activeTaskCount" class="badge">0</span></h2>
+                <button class="btn btn-sm" onclick="loadActiveTasks()">刷新</button>
+            </div>
+            <div class="active-tasks-list" id="activeTasksList">
+                <!-- 活动任务将在这里动态加载 -->
+            </div>
+        </div>
+
         <!-- 操作栏 -->
         <div class="action-bar">
             <button class="btn btn-primary" onclick="openAddUserModal()">

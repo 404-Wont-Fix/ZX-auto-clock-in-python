@@ -12,9 +12,11 @@ from app.models.schemas import (
     ClockinTriggerResponse,
     ClockinResultsResponse,
     ClockinStatsResponse,
-    SuccessResponse
+    SuccessResponse,
+    ActiveTasksResponse
 )
 from app.services.clockin_service import ClockinService
+from app.services.active_task_service import ActiveTaskService
 
 router = APIRouter(prefix="/api/clockin", tags=["打卡操作"])
 
@@ -76,3 +78,15 @@ async def get_stats(
     """获取统计数据"""
     data = await ClockinService.get_stats(db)
     return ClockinStatsResponse(success=True, data=data)
+
+
+@router.get("/active-tasks", response_model=ActiveTasksResponse)
+async def get_active_tasks(
+    session: DBSession = Depends(verify_session)
+):
+    """获取当前活动任务"""
+    tasks = await ActiveTaskService.get_active_tasks()
+    return ActiveTasksResponse(success=True, data={
+        'active_tasks': tasks,
+        'count': len(tasks)
+    })

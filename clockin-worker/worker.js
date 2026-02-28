@@ -67,6 +67,21 @@ export default {
                 });
             }
 
+            if (path === '/status') {
+                return jsonResponse({
+                    status: 'operational',
+                    timestamp: new Date().toISOString(),
+                    service: 'clockin-executor',
+                    version: '1.0.0',
+                    endpoints: [
+                        { path: '/health', method: 'GET', description: '健康检查' },
+                        { path: '/status', method: 'GET', description: '服务状态' },
+                        { path: '/clockin', method: 'POST', description: '执行打卡' }
+                    ],
+                    note: 'Cloudflare Workers 是无状态的，无法追踪当前正在执行的任务'
+                });
+            }
+
             if (path === '/clockin' && request.method === 'POST') {
                 return await handleClockin(request, env);
             }

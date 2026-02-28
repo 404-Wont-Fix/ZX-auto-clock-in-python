@@ -55,6 +55,10 @@ document.addEventListener('DOMContentLoaded', () => {
     loadUsers();
     loadStats();
     loadRecords();
+    loadActiveTasks();
+
+    // 定时刷新活动任务
+    setInterval(loadActiveTasks, 3000);  // 每3秒刷新一次
 });
 
 // 加载用户列表
@@ -506,6 +510,66 @@ async function loadStats() {
     } catch (error) {
         if (error.message !== 'Unauthorized') {
             console.error('[数据加载] 加载统计失败:', error);
+        }
+    }
+}
+
+// 加载活动任务
+async function loadActiveTasks() {
+    console.log('[数据加载] 开始加载活动任务');
+    try {
+        const response = await apiRequest('/api/clockin/active-tasks');
+        const data = await response.json();
+        const tasks = data.data.active_tasks || [];
+        const count = data.data.count || 0;
+
+        const section = document.getElementById('activeTasksSection');
+        const list = document.getElementById('activeTasksList');
+        const countBadge = document.getElementById('activeTaskCount');
+
+        // 更新计数
+        countBadge.textContent = count;
+
+        // 显示/隐藏部分
+        if (count > 0) {
+            section.style.display = 'block';
+        } else {
+            section.style.display = 'none';
+            return;
+        }
+
+        // 渲染任务列表
+        if (tasks.length === 0) {
+            list.innerHTML = `
+                <div class="active-task-empty">
+                    暂无活动任务
+                </div>
+            `;
+        } else {
+            list.innerHTML = tasks.map(task => `
+                <div class="active-task-card">
+                    <div class="active-task-info">
+                        <div class="active-task-user">
+                            <div class="active-task-username">${escapeHtml(task.username)}</div>
+                            ${task.nickname && task.nickname !== task.username ? `<div class="active-task-nickname">${escapeHtml(task.nickname)}</div>` : ''}
+                        </div>
+                        <div class="active-task-details">
+                            ${task.worker_api_name ? `<span class="active-task-api">🔗 ${escapeHtml(task.worker_api_name)}</span>` : '<span class="active-task-api">🔗 后备API</span>'}
+                            <span class="active-task-time">⏱ ${task.elapsed_seconds}秒</span>
+                        </div>
+                    </div>
+                    <div class="active-task-status">
+                        <div class="active-task-spinner"></div>
+                        <span style="font-size: 12px; color: var(--accent-color);">执行中</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        console.log('[数据加载] 活动任务加载完成:', count);
+    } catch (error) {
+        if (error.message !== 'Unauthorized') {
+            console.error('[数据加载] 加载活动任务失败:', error);
         }
     }
 }
@@ -1011,7 +1075,7 @@ async function deleteUser(userId) {
     }
 }
 
-// 触发所有用户打卡（异步任务模式）
+// 触发所有用户打卡
 async function triggerAllClockin() {
     console.log('[触发批量打卡] 开始');
 
@@ -1025,7 +1089,10 @@ async function triggerAllClockin() {
     if (!confirm('确定要为所有启用的用户执行打卡吗？')) return;
 
     isClockinRunning = true;
-    showToast('正在创建打卡任务...', 'success');
+    showToast('正在执行打卡，请稍候...', 'success');
+
+    // 立即刷新活动任务显示
+    loadActiveTasks();
 
     const apiUrl = '/api/clockin/trigger';
     console.log('[批量打卡] 发送请求到:', apiUrl);
@@ -1041,23 +1108,26 @@ async function triggerAllClockin() {
         const data = await response.json();
         console.log('[批量打卡] 响应数据:', data);
 
-        if (data.success && data.data.task_id) {
-            const taskId = data.data.task_id;
-            console.log('[批量打卡] 任务ID:', taskId);
-            showToast('打卡任务已创建，正在后台执行...', 'success');
+        if (data.success) {
+            const result = data.data;
+            const message = result.message || `打卡完成: 成功 ${result.success}，失败 ${result.failure}`;
+            showToast(message, 'success');
 
-            // 开始轮询任务状态
-            await pollTaskStatus(taskId);
+            // 刷新数据显示
+            loadUsers();
+            loadStats();
+            loadRecords();
+            loadActiveTasks();  // 清除活动任务显示
         } else {
             console.error('[批量打卡] 失败:', data.error);
-            showToast('打卡失败', 'error');
-            isClockinRunning = false;
+            showToast('打卡失败: ' + (data.error || '未知错误'), 'error');
         }
     } catch (error) {
         if (error.message !== 'Unauthorized') {
             console.error('[批量打卡] 请求异常:', error);
             showToast('打卡请求失败: ' + error.message, 'error');
         }
+    } finally {
         isClockinRunning = false;
     }
 }
@@ -1160,6 +1230,9 @@ async function triggerUserClockin(userId, event) {
     isClockinRunning = true;
     showToast('正在执行打卡...', 'success');
 
+    // 立即刷新活动任务显示
+    loadActiveTasks();
+
     const apiUrl = `/api/clockin/user/${userId}`;
     console.log('[打卡] 发送请求到:', apiUrl);
 
@@ -1180,6 +1253,7 @@ async function triggerUserClockin(userId, event) {
             loadUsers();
             loadStats();
             loadRecords();
+            loadActiveTasks();  // 清除活动任务显示
         } else {
             console.error('[打卡] 失败:', data.error);
             showToast(data.error || '打卡失败', 'error');

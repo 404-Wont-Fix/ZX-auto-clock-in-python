@@ -297,6 +297,26 @@ class HealthResponse(BaseModel):
     database: Optional[str] = None
 
 
+# ==================== 活动任务相关 ====================
+
+class ActiveTaskInfo(BaseModel):
+    """活动任务信息"""
+    user_id: str
+    username: str
+    nickname: str
+    worker_api_id: Optional[str] = None
+    worker_api_name: Optional[str] = None
+    started_at: str
+    elapsed_seconds: int
+    status: str
+
+
+class ActiveTasksResponse(BaseModel):
+    """活动任务列表响应"""
+    success: bool
+    data: Dict[str, Any]
+
+
 # ==================== 通用响应 ====================
 
 class ErrorResponse(BaseModel):
