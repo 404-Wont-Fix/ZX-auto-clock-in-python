@@ -33,6 +33,7 @@ class PoetryService:
     # 图片 API 配置（与原JS项目保持一致）
     IMAGE_APIS = {
         'bing': 'https://www.bing.com/HPImageArchive.aspx?format=js&n=1&mkt=zh-CN',
+        'bing_uhd': 'https://bing.img.run/uhd.php',
         'komll': 'https://api.komll.com/images',
         'loliapi': 'https://www.loliapi.com/acg/',
     }
@@ -257,6 +258,11 @@ class PoetryService:
             if provider == 'bing':
                 return await PoetryService._fetch_bing_image()
 
+            elif provider == 'bing_uhd':
+                # Bing UHD 第三方 API，通过302重定向获取高清壁纸
+                url = PoetryService.IMAGE_APIS['bing_uhd']
+                return await PoetryService._fetch_redirect_image(url)
+
             elif provider == 'komll':
                 # Komll 使用固定的 URL，返回的是图片URL（会302重定向）
                 url = PoetryService.IMAGE_APIS['komll']
@@ -283,6 +289,14 @@ class PoetryService:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(PoetryService.IMAGE_APIS['bing'])
                 response.raise_for_status()
+
+                # 检查响应内容类型（支持多种可能的类型）
+                content_type = response.headers.get('content-type', '').lower()
+                if 'json' not in content_type:
+                    print(f"[PoetryService] 必应API返回非JSON内容: {content_type}")
+                    print(f"[PoetryService] 响应内容预览: {response.text[:200]}")
+                    return None
+
                 data = response.json()
 
                 images = data.get('images', [])
@@ -290,9 +304,21 @@ class PoetryService:
                     image = images[0]
                     url = image.get('url')
                     if url:
-                        # 返回完整 URL
-                        return f"https://www.bing.com{url}"
+                        # Bing API 返回的 url 可能是完整URL或相对路径
+                        if url.startswith('http'):
+                            # 已经是完整 URL
+                            return url
+                        elif url.startswith('/'):
+                            # 相对路径，需要拼接域名
+                            return f"https://www.bing.com{url}"
+                        else:
+                            # 其他情况，直接返回
+                            print(f"[PoetryService] Bing URL 格式异常: {url}")
+                            return None
 
+        except json.JSONDecodeError as e:
+            print(f"[PoetryService] 必应API返回无效JSON: {e}")
+            print(f"[PoetryService] 响应内容: {response.text[:200] if 'response' in locals() else 'N/A'}")
         except Exception as e:
             print(f"[PoetryService] 获取必应图片失败: {e}")
 
@@ -313,12 +339,20 @@ class PoetryService:
                 )
                 response.raise_for_status()
 
-                # 返回最终的URL（跟随重定向后）
-                # httpx 会自动处理重定向，response.url 就是最终的URL
-                final_url = str(response.url)
-                print(f"[PoetryService] 重定向图片URL: {final_url}")
-                return final_url
+                # 检查响应内容类型，如果是图片则返回URL
+                content_type = response.headers.get('content-type', '')
+                if 'image/' in content_type:
+                    final_url = str(response.url)
+                    print(f"[PoetryService] 重定向图片URL: {final_url}")
+                    return final_url
+                else:
+                    # 如果不是图片，打印响应内容以便调试
+                    text_preview = response.text[:100] if response.text else ''
+                    print(f"[PoetryService] API返回非图片内容: {content_type}, 预览: {text_preview}")
+                    return None
 
+        except httpx.HTTPStatusError as e:
+            print(f"[PoetryService] 获取重定向图片HTTP错误 ({url}): {e.response.status_code}")
         except Exception as e:
             print(f"[PoetryService] 获取重定向图片失败 ({url}): {e}")
 
@@ -354,11 +388,20 @@ class PoetryService:
                 )
                 response.raise_for_status()
 
-                # 返回最终的重定向URL
-                final_url = str(response.url)
-                print(f"[PoetryService] 次元API图片URL: {final_url}")
-                return final_url
+                # 检查响应内容类型，如果是图片则返回URL
+                content_type = response.headers.get('content-type', '')
+                if 'image/' in content_type:
+                    final_url = str(response.url)
+                    print(f"[PoetryService] 次元API图片URL: {final_url}")
+                    return final_url
+                else:
+                    # 如果不是图片，打印响应内容以便调试
+                    text_preview = response.text[:100] if response.text else ''
+                    print(f"[PoetryService] 次元API返回非图片内容: {content_type}, 预览: {text_preview}")
+                    return None
 
+        except httpx.HTTPStatusError as e:
+            print(f"[PoetryService] 次元API HTTP错误 ({category}): {e.response.status_code}")
         except Exception as e:
             print(f"[PoetryService] 获取次元API图片失败 ({category}): {e}")
 
