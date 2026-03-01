@@ -50,7 +50,7 @@ async def trigger_user(
 @router.get("/results", response_model=ClockinResultsResponse)
 async def get_clockin_results(
     date: Optional[str] = Query(None, description="日期 YYYY-MM-DD"),
-    range: str = Query("day", description="范围: day 或 week"),
+    range: str = Query("day", description="范围: day, 3days 或 week"),
     db: AsyncSession = Depends(get_db),
     session: DBSession = Depends(verify_session)
 ):
@@ -60,10 +60,10 @@ async def get_clockin_results(
     if not date:
         date = datetime.utcnow().strftime('%Y-%m-%d')
 
-    if range not in ['day', 'week']:
+    if range not in ['day', '3days', 'week']:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="range 参数必须是 'day' 或 'week'"
+            detail="range 参数必须是 'day', '3days' 或 'week'"
         )
 
     data = await ClockinService.get_clockin_results(db, date, range)

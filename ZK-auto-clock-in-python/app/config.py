@@ -38,9 +38,16 @@ class Settings(BaseSettings):
     batch_delay: int = 2000  # 批次间延迟（毫秒）
     parallel_tasks: int = 4  # 并行任务数量
 
+    # 打卡重试配置
+    clockin_retry_count: int = 3  # 打卡失败时的重试次数
+    clockin_retry_delay: int = 3  # 重试延迟（秒）
+    clockin_timeout: int = 60  # 请求超时时间（秒）
+    clockin_rate_limit_delay: int = 10  # 频率限制时的额外延迟（秒）
+
     # 定时任务配置
     schedule_cron: str = "0 10 16 * * *"  # UTC 16:10 (北京时间 0:10)
     schedule_enabled: bool = True  # 定时任务开关
+    schedule_timezone: str = "UTC"  # 定时任务时区
 
     # 数据保留天数
     retention_days: int = 7

@@ -598,6 +598,9 @@ body {
     transform: translateY(100px);
     opacity: 0;
     transition: all 0.3s ease;
+    z-index: 10000;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .toast.show {

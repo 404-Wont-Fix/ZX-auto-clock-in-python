@@ -62,16 +62,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 监听定时任务配置变化
     const scheduleTimeInput = document.getElementById('configScheduleTime');
-    const scheduleTimezoneSelect = document.getElementById('configScheduleTimezone');
     const scheduleEnabledCheckbox = document.getElementById('configScheduleEnabled');
 
     if (scheduleTimeInput) {
         scheduleTimeInput.addEventListener('change', updateTimePreview);
         scheduleTimeInput.addEventListener('input', updateTimePreview);
-    }
-
-    if (scheduleTimezoneSelect) {
-        scheduleTimezoneSelect.addEventListener('change', updateTimePreview);
     }
 
     if (scheduleEnabledCheckbox) {
@@ -594,26 +589,25 @@ async function loadActiveTasks() {
     }
 }
 
-// 加载打卡记录（支持单日或一周）
-let currentRecordRange = 'day';  // 'day' 或 'week'
+// 加载打卡记录（支持简单视图和详细视图）
+let currentRecordView = 'simple';  // 'simple'（今日）或 'detailed'（3天内），默认简单视图
 
 async function loadRecords() {
-    console.log('[数据加载] 开始加载打卡记录, 范围:', currentRecordRange);
+    console.log('[数据加载] 开始加载打卡记录, 视图:', currentRecordView);
     try {
-        const range = currentRecordRange;
-        const url = range === 'week'
-            ? `/api/clockin/results?range=week`
+        const url = currentRecordView === 'detailed'
+            ? `/api/clockin/results?range=3days`
             : `/api/clockin/results?date=${new Date().toISOString().split('T')[0]}`;
 
         const response = await apiRequest(url);
         const data = await response.json();
         const container = document.getElementById('recordList');
 
-        if (range === 'week') {
-            // 一周记录视图
+        if (currentRecordView === 'detailed') {
+            // 详细视图：3天记录
             renderWeekRecords(container, data.data);
         } else {
-            // 单日记录视图
+            // 简单视图：仅今日
             const results = data.data.results || [];
             if (results.length === 0) {
                 container.innerHTML = `
@@ -1014,13 +1008,13 @@ function renderClockinResults(details) {
     }).join('');
 }
 
-// 渲染一周打卡记录
+// 渲染多天打卡记录（支持3天或7天）
 function renderWeekRecords(container, weekData) {
     if (!weekData.dates || weekData.dates.length === 0) {
         container.innerHTML = `
             <div class="no-records-tip">
                 <div class="no-records-icon">📊</div>
-                <div class="no-records-text">近 7 天暂无打卡记录</div>
+                <div class="no-records-text">暂无打卡记录</div>
             </div>
         `;
         return;
@@ -1065,12 +1059,12 @@ function renderWeekRecords(container, weekData) {
     }).join('');
 }
 
-// 切换记录范围
+// 切换记录视图
 function toggleRecordRange() {
-    currentRecordRange = currentRecordRange === 'day' ? 'week' : 'day';
+    currentRecordView = currentRecordView === 'simple' ? 'detailed' : 'simple';
     const btnText = document.getElementById('rangeToggleText');
     if (btnText) {
-        btnText.textContent = currentRecordRange === 'day' ? '📅 切换到一周视图' : '📅 切换到今日视图';
+        btnText.textContent = currentRecordView === 'simple' ? '📋 切换到简单视图' : '📊 切换到详细视图';
     }
     loadRecords();
 }
@@ -1645,6 +1639,12 @@ async function openConfigModal() {
         document.getElementById('configApiRequestDelay').value = config.api_request_delay || 500;
         document.getElementById('configClockinTypeDelay').value = config.clockin_type_delay || 2;
 
+        // 加载重试配置
+        document.getElementById('configClockinRetryCount').value = config.clockin_retry_count || 3;
+        document.getElementById('configClockinRetryDelay').value = config.clockin_retry_delay || 3;
+        document.getElementById('configClockinTimeout').value = config.clockin_timeout || 60;
+        document.getElementById('configClockinRateLimitDelay').value = config.clockin_rate_limit_delay || 10;
+
         // 加载定时任务开关
         const scheduleEnabled = config.schedule_enabled !== undefined ? config.schedule_enabled : true;
         document.getElementById('configScheduleEnabled').checked = scheduleEnabled;
@@ -1654,18 +1654,13 @@ async function openConfigModal() {
         if (config.schedule_cron) {
             const cronParts = config.schedule_cron.trim().split(/\s+/);
             if (cronParts.length >= 6) {
-                // Cron 格式: 秒 分 时 日 月 周（存储的是 UTC 时间）
+                // Cron 格式: 秒 分 时 日 月 周（数据库中直接存储北京时间）
                 const second = cronParts[0];
                 const minute = cronParts[1];
                 const hour = parseInt(cronParts[2]);
 
-                // 将 UTC 时间转换为北京时间（UTC + 8）
-                let beijingHour = hour + 8;
-                if (beijingHour >= 24) {
-                    beijingHour -= 24;
-                }
-
-                const timeStr = `${beijingHour.toString().padStart(2, '0')}:${minute.padStart(2, '0')}`;
+                // 直接使用存储的时间（已经是北京时间）
+                const timeStr = `${hour.toString().padStart(2, '0')}:${minute.padStart(2, '0')}`;
                 document.getElementById('configScheduleTime').value = timeStr;
 
                 // 设置为北京时间模式
@@ -1679,6 +1674,12 @@ async function openConfigModal() {
 
         // 更新时间预览
         updateTimePreview();
+
+        // 加载调度器状态和倒计时
+        await refreshScheduleInfo();
+
+        // 启动倒计时更新
+        startScheduleCountdown();
 
         // 加载 Worker API 列表
         await loadWorkerApis();
@@ -1712,32 +1713,17 @@ function setQuickTime(time) {
 // 更新时间预览
 function updateTimePreview() {
     const timeInput = document.getElementById('configScheduleTime').value;
-    const timezone = document.getElementById('configScheduleTimezone').value;
 
     if (!timeInput) return;
 
     const [hour, minute] = timeInput.split(':').map(v => parseInt(v));
 
-    if (timezone === 'beijing') {
-        // 北京时间转 UTC
-        let utcHour = hour - 8;
-        if (utcHour < 0) utcHour += 24;
+    // 直接使用北京时间，不做转换
+    document.getElementById('nextRunTime').textContent = `北京时间 ${timeInput}`;
+    document.getElementById('utcTime').textContent = `每天 ${timeInput} 执行`;
 
-        document.getElementById('nextRunTime').textContent = `北京时间 ${timeInput}`;
-        document.getElementById('utcTime').textContent = `${utcHour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-
-        const cronExpr = `0 ${minute} ${utcHour} * * *`;
-        document.getElementById('cronExpression').textContent = cronExpr;
-    } else {
-        // UTC 时间
-        document.getElementById('nextRunTime').textContent = `UTC 时间 ${timeInput}`;
-        let beijingHour = hour + 8;
-        if (beijingHour >= 24) beijingHour -= 24;
-        document.getElementById('utcTime').textContent = `北京时间 ${beijingHour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-
-        const cronExpr = `0 ${minute} ${hour} * * *`;
-        document.getElementById('cronExpression').textContent = cronExpr;
-    }
+    const cronExpr = `0 ${minute} ${hour} * * *`;
+    document.getElementById('cronExpression').textContent = cronExpr;
 }
 
 // 切换配置标签页
@@ -1795,30 +1781,40 @@ async function saveConfig() {
         config.clockin_type_delay = clockinTypeDelay;
     }
 
+    // 获取重试配置
+    const clockinRetryCount = parseInt(document.getElementById('configClockinRetryCount').value);
+    const clockinRetryDelay = parseInt(document.getElementById('configClockinRetryDelay').value);
+    const clockinTimeout = parseInt(document.getElementById('configClockinTimeout').value);
+    const clockinRateLimitDelay = parseInt(document.getElementById('configClockinRateLimitDelay').value);
+
+    if (!isNaN(clockinRetryCount)) {
+        config.clockin_retry_count = clockinRetryCount;
+    }
+    if (!isNaN(clockinRetryDelay)) {
+        config.clockin_retry_delay = clockinRetryDelay;
+    }
+    if (!isNaN(clockinTimeout)) {
+        config.clockin_timeout = clockinTimeout;
+    }
+    if (!isNaN(clockinRateLimitDelay)) {
+        config.clockin_rate_limit_delay = clockinRateLimitDelay;
+    }
+
     // 获取定时任务开关
     const scheduleEnabled = document.getElementById('configScheduleEnabled').checked;
     config.schedule_enabled = scheduleEnabled;
 
     // 获取定时任务配置
     const scheduleTime = document.getElementById('configScheduleTime').value;
-    const scheduleTimezone = document.getElementById('configScheduleTimezone').value;
 
     if (scheduleTime) {
         const [hour, minute] = scheduleTime.split(':').map(v => parseInt(v));
-
-        if (scheduleTimezone === 'beijing') {
-            // 北京时间转 UTC（减去 8 小时）
-            let utcHour = hour - 8;
-            if (utcHour < 0) {
-                utcHour += 24;
-            }
-            // Cron 格式: 秒 分 时 日 月 周
-            config.schedule_cron = `0 ${minute} ${utcHour} * * *`;
-        } else {
-            // 直接使用 UTC 时间
-            config.schedule_cron = `0 ${minute} ${hour} * * *`;
-        }
+        // Cron 格式: 秒 分 时 日 月 周（直接使用北京时间）
+        config.schedule_cron = `0 ${minute} ${hour} * * *`;
     }
+
+    // 强制使用北京时间
+    config.schedule_timezone = 'Asia/Shanghai';
 
     try {
         const response = await apiRequest('/api/config', {
@@ -1837,6 +1833,130 @@ async function saveConfig() {
         if (error.message !== 'Unauthorized') {
             showToast('保存失败: ' + error.message, 'error');
         }
+    }
+}
+
+// ========== 定时任务相关函数 ==========
+
+// 存储下次执行时间
+let nextRunTime = null;
+let scheduleCountdownInterval = null;
+
+/**
+ * 刷新调度器状态
+ */
+async function refreshScheduleInfo() {
+    try {
+        const response = await apiRequest('/api/config/schedule');
+        const data = await response.json();
+
+        if (data.success && data.data.job_info && data.data.job_info.next_run_time) {
+            // 更新下次执行时间
+            nextRunTime = new Date(data.data.job_info.next_run_time);
+            updateCountdownDisplay();
+        } else {
+            // 调度器未运行或没有配置
+            nextRunTime = null;
+            document.getElementById('scheduleCountdown').textContent = '⚠️ 调度器未运行';
+        }
+    } catch (error) {
+        console.error('获取调度器状态失败:', error);
+        nextRunTime = null;
+        document.getElementById('scheduleCountdown').textContent = '⚠️ 无法获取状态';
+    }
+}
+
+/**
+ * 更新倒计时显示
+ */
+function updateCountdownDisplay() {
+    if (!nextRunTime) {
+        document.getElementById('scheduleCountdown').textContent = '⏱ 计算中...';
+        return;
+    }
+
+    const now = new Date();
+    const diff = nextRunTime - now;
+
+    if (diff <= 0) {
+        document.getElementById('scheduleCountdown').textContent = '✅ 即将执行';
+        return;
+    }
+
+    // 计算倒计时
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+    let countdownText = '⏱ 距离下次执行: ';
+    if (days > 0) {
+        countdownText += `${days}天 ${hours}时 ${minutes}分`;
+    } else if (hours > 0) {
+        countdownText += `${hours}时 ${minutes}分 ${seconds}秒`;
+    } else if (minutes > 0) {
+        countdownText += `${minutes}分 ${seconds}秒`;
+    } else {
+        countdownText += `${seconds}秒`;
+    }
+
+    document.getElementById('scheduleCountdown').textContent = countdownText;
+}
+
+/**
+ * 启动倒计时更新
+ */
+function startScheduleCountdown() {
+    // 清除之前的定时器
+    if (scheduleCountdownInterval) {
+        clearInterval(scheduleCountdownInterval);
+    }
+
+    // 立即更新一次
+    updateCountdownDisplay();
+
+    // 每秒更新倒计时
+    scheduleCountdownInterval = setInterval(() => {
+        updateCountdownDisplay();
+    }, 1000);
+}
+
+/**
+ * 测试定时任务
+ */
+async function testScheduleTask() {
+    const btn = document.getElementById('testScheduleBtn');
+    const originalText = btn.innerHTML;
+
+    try {
+        // 禁用按钮并显示加载状态
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span> 测试中...';
+
+        showToast('开始测试定时任务，将在3秒后返回结果...', 'info');
+
+        // 调用测试API
+        const response = await apiRequest('/api/config/test-schedule', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showToast('✅ 测试成功！定时任务调度器正常工作', 'success');
+            // 刷新调度器状态
+            await refreshScheduleInfo();
+        } else {
+            showToast('❌ 测试失败: ' + (data.error || '未知错误'), 'error');
+        }
+    } catch (error) {
+        if (error.message !== 'Unauthorized') {
+            showToast('❌ 测试失败: ' + error.message, 'error');
+        }
+    } finally {
+        // 恢复按钮状态
+        btn.disabled = false;
+        btn.innerHTML = originalText;
     }
 }
 

@@ -28,22 +28,28 @@ class ClockinService:
         db: AsyncSession,
         user: User,
         triggered_by: str = 'manual',
-        retries: int = 1,
+        retries: Optional[int] = None,
         worker_api: Optional[WorkerApi] = None
     ) -> Dict:
         """
-        调用 clockin-worker API（支持多 API 负载均衡）
+        调用 clockin-worker API（支持多 API 负载均衡和智能重试）
 
         Args:
             db: 数据库会话
             user: 用户对象
             triggered_by: 触发方式 (manual/scheduled)
-            retries: 重试次数
+            retries: 重试次数（None 则使用配置中的默认值）
             worker_api: 指定的 Worker API（可选）
 
         Returns:
             打卡结果字典
         """
+        # 获取重试配置
+        max_retries = retries if retries is not None else settings.clockin_retry_count
+        retry_delay = settings.clockin_retry_delay
+        rate_limit_delay = settings.clockin_rate_limit_delay
+        timeout = settings.clockin_timeout
+
         # 获取 Worker API（如果没有指定，则自动选择）
         if worker_api is None:
             worker_api = await WorkerApiService.get_next_api(db)
@@ -61,9 +67,8 @@ class ClockinService:
         api_token = worker_api.token
         # 记录请求统计
         await WorkerApiService.increment_requests(db, worker_api.id)
-        logger.info(f"[用户 {user.username}] 使用 Worker API: {worker_api.name} ({api_url})")
+        logger.info(f"[用户 {user.username}] 使用 Worker API: {worker_api.name} ({api_url})，最大重试次数: {max_retries}")
 
-        max_retries = retries
         last_worker_api_id = worker_api.id
         task_success = False
 
@@ -80,7 +85,7 @@ class ClockinService:
             for attempt in range(max_retries + 1):
                 try:
                     if attempt > 0:
-                        logger.info(f"重试第 {attempt} 次: {user.username}")
+                        logger.info(f"[用户 {user.username}] 重试第 {attempt} 次")
 
                     # 获取备注内容
                     daily_comment = await PoetryService.get_daily_comment(user)
@@ -107,42 +112,87 @@ class ClockinService:
 
                     # 发送请求
                     start_time = datetime.now()
-                    async with httpx.AsyncClient(timeout=60.0) as client:
-                        response = await client.post(
-                            url,
-                            json=request_body,
-                            headers={
-                                "Content-Type": "application/json",
-                                "Authorization": f"Bearer {api_token}"
-                            }
-                        )
+                    is_timeout = False
+                    is_rate_limit = False
+
+                    try:
+                        async with httpx.AsyncClient(timeout=timeout) as client:
+                            response = await client.post(
+                                url,
+                                json=request_body,
+                                headers={
+                                    "Content-Type": "application/json",
+                                    "Authorization": f"Bearer {api_token}"
+                                }
+                            )
+                    except httpx.TimeoutException:
+                        logger.warning(f"[用户 {user.username}] 请求超时")
+                        is_timeout = True
+                        # 超时错误，使用默认延迟
+                        if attempt < max_retries:
+                            await asyncio.sleep(retry_delay)
+                            continue
+                        else:
+                            raise Exception(f"请求超时（超过 {timeout} 秒）")
+
+                    except httpx.ConnectError as e:
+                        logger.warning(f"[用户 {user.username}] 连接失败: {e}")
+                        # 连接错误，可以立即重试
+                        if attempt < max_retries:
+                            await asyncio.sleep(1)  # 连接错误使用较短延迟
+                            continue
+                        else:
+                            raise Exception(f"连接失败: {str(e)}")
 
                     duration = (datetime.now() - start_time).total_seconds() * 1000
 
                     if not response.is_success:
-                        logger.warning(f"API 请求失败: {response.status_code}")
+                        status_code = response.status_code
+                        logger.warning(f"[用户 {user.username}] API 请求失败: HTTP {status_code}")
 
-                        # 标记失败（仅在非重试时）
+                        # 检查是否是频率限制错误
+                        if status_code == 429:
+                            is_rate_limit = True
+                            logger.warning(f"[用户 {user.username}] 触发频率限制，使用较长延迟")
+                            delay = rate_limit_delay
+                        # 5xx 服务器错误或 429 频率限制
+                        elif status_code >= 500 or status_code == 429:
+                            delay = retry_delay
+                        else:
+                            # 4xx 其他错误不重试
+                            delay = None
+
+                        # 标记失败（仅在最后一次失败时）
                         if attempt == max_retries:
                             await WorkerApiService.mark_failure(db, last_worker_api_id)
                             # 尝试切换到另一个 API
                             next_api = await WorkerApiService.get_next_api(db)
                             if next_api and next_api.id != last_worker_api_id:
-                                logger.info(f"切换到另一个 Worker API: {next_api.name}")
+                                logger.info(f"[用户 {user.username}] 切换到另一个 Worker API: {next_api.name}")
                                 # 完成当前任务追踪（失败）
                                 await ActiveTaskService.complete_task(user.id, success=False)
                                 # 递归调用（会创建新的任务追踪）
                                 return await ClockinService.call_clockin_api(
-                                    db, user, triggered_by, 0, next_api
+                                    db, user, triggered_by, None, next_api
                                 )
 
-                        # 5xx 错误重试
-                        if response.status_code >= 500 or response.status_code == 429:
-                            if attempt < max_retries:
-                                await asyncio.sleep(2)
-                                continue
+                            # 没有其他 API 可切换，返回错误
+                            error_msg = f"API 请求失败: HTTP {status_code}"
+                            try:
+                                error_detail = response.json()
+                                if 'message' in error_detail:
+                                    error_msg = error_detail['message']
+                            except:
+                                pass
+                            raise Exception(error_msg)
 
-                        raise Exception(f"API 请求失败: {response.status_code}")
+                        # 如果需要重试
+                        if delay is not None and attempt < max_retries:
+                            logger.info(f"[用户 {user.username}] {delay} 秒后重试...")
+                            await asyncio.sleep(delay)
+                            continue
+
+                        raise Exception(f"API 请求失败: HTTP {status_code}")
 
                     result = response.json()
                     result['duration'] = duration
@@ -164,10 +214,11 @@ class ClockinService:
                         await WorkerApiService.mark_success(db, last_worker_api_id)
 
                     task_success = True
+                    logger.info(f"[用户 {user.username}] 打卡成功，耗时 {duration:.0f}ms")
                     return result
 
                 except Exception as e:
-                    logger.warning(f"第 {attempt + 1} 次尝试失败: {e}")
+                    logger.warning(f"[用户 {user.username}] 第 {attempt + 1} 次尝试失败: {e}")
 
                     # 标记失败并尝试切换（仅在最后一次失败时）
                     if attempt == max_retries:
@@ -176,12 +227,12 @@ class ClockinService:
                             # 尝试切换到另一个 API
                             next_api = await WorkerApiService.get_next_api(db)
                             if next_api and next_api.id != last_worker_api_id:
-                                logger.info(f"切换到另一个 Worker API: {next_api.name}")
+                                logger.info(f"[用户 {user.username}] 切换到另一个 Worker API: {next_api.name}")
                                 # 完成当前任务追踪（失败）
                                 await ActiveTaskService.complete_task(user.id, success=False)
                                 # 递归调用（会创建新的任务追踪）
                                 return await ClockinService.call_clockin_api(
-                                    db, user, triggered_by, 0, next_api
+                                    db, user, triggered_by, None, next_api
                                 )
 
                         # 所有 API 都不可用，返回错误
@@ -193,12 +244,21 @@ class ClockinService:
                         }
 
                     if attempt < max_retries:
-                        await asyncio.sleep(2)
+                        # 根据错误类型决定延迟
+                        if '超时' in str(e) or 'timeout' in str(e).lower():
+                            # 超时使用标准延迟
+                            await asyncio.sleep(retry_delay)
+                        elif '频率' in str(e) or 'rate limit' in str(e).lower() or '429' in str(e):
+                            # 频率限制使用较长延迟
+                            await asyncio.sleep(rate_limit_delay)
+                        else:
+                            # 其他错误使用较短延迟
+                            await asyncio.sleep(max(1, retry_delay // 2))
                         continue
         finally:
             # 完成任务追踪（仅在非递归调用时）
             # 递归调用会自己管理任务追踪
-            if retries == 0 or task_success:
+            if retries is None or task_success:
                 await ActiveTaskService.complete_task(
                     user_id=user.id,
                     success=task_success
@@ -307,9 +367,15 @@ class ClockinService:
 
     @staticmethod
     async def trigger_all_users(
-        db: AsyncSession
+        db: AsyncSession,
+        triggered_by: str = 'manual'
     ) -> Dict:
-        """触发所有用户打卡（并行动态分配）"""
+        """触发所有用户打卡（并行动态分配）
+
+        Args:
+            db: 数据库会话
+            triggered_by: 触发方式 (manual/scheduled)
+        """
         # 获取启用的用户
         users = await UserService.get_enabled_users(db)
 
@@ -338,7 +404,7 @@ class ClockinService:
                     logger.info(f"[{index + 1}/{len(users)}] 开始处理用户: {user.username}")
 
                     # 调用打卡 API（会动态获取可用的 Worker API）
-                    result = await ClockinService.call_clockin_api(db, user, 'manual')
+                    result = await ClockinService.call_clockin_api(db, user, triggered_by)
 
                     # 保存结果
                     await ClockinService.save_clockin_result(db, user, result)
@@ -408,8 +474,18 @@ class ClockinService:
         }
 
     @staticmethod
-    async def trigger_user(db: AsyncSession, user_id: str) -> Dict:
-        """触发指定用户打卡"""
+    async def trigger_user(
+        db: AsyncSession,
+        user_id: str,
+        triggered_by: str = 'manual'
+    ) -> Dict:
+        """触发指定用户打卡
+
+        Args:
+            db: 数据库会话
+            user_id: 用户 ID
+            triggered_by: 触发方式 (manual/scheduled)
+        """
         result = await db.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
 
@@ -421,7 +497,7 @@ class ClockinService:
 
         try:
             # 调用打卡 API
-            result = await ClockinService.call_clockin_api(db, user, 'manual')
+            result = await ClockinService.call_clockin_api(db, user, triggered_by)
 
             # 保存结果
             await ClockinService.save_clockin_result(db, user, result)
@@ -452,13 +528,20 @@ class ClockinService:
         date: str,
         range_type: str = 'day'
     ) -> Dict:
-        """获取打卡历史"""
-        if range_type == 'week':
-            # 获取一周数据
-            week_data = []
+        """获取打卡历史
+
+        Args:
+            db: 数据库会话
+            date: 日期 (YYYY-MM-DD)
+            range_type: 范围类型 - day(单日), 3days(3天), week(7天)
+        """
+        if range_type in ['3days', 'week']:
+            # 获取多天数据
+            days_count = 3 if range_type == '3days' else 7
+            multi_data = []
             today = datetime.utcnow()
 
-            for i in range(7):
+            for i in range(days_count):
                 d = today - timedelta(days=i)
                 date_str = d.strftime('%Y-%m-%d')
 
@@ -475,16 +558,16 @@ class ClockinService:
                 summary = summary.scalar_one_or_none()
 
                 if results or summary:
-                    week_data.append({
+                    multi_data.append({
                         'date': date_str,
                         'summary': summary.to_dict() if summary else None,
                         'results': [r.to_dict() for r in results]
                     })
 
             return {
-                'range': 'week',
-                'dates': week_data,
-                'total_days': len(week_data)
+                'range': range_type,
+                'dates': multi_data,
+                'total_days': len(multi_data)
             }
 
         # 单日数据
