@@ -1660,15 +1660,20 @@ async function openConfigModal() {
         const data = await response.json();
         const config = data.data || {};
 
-        // 加载基本配置
-        document.getElementById('configApiRequestDelay').value = config.api_request_delay || 500;
-        document.getElementById('configClockinTypeDelay').value = config.clockin_type_delay || 2;
+        // 调试：打印从后端获取的配置
+        console.log('[配置加载] 从后端获取的配置:', config);
+        console.log('[配置加载] clockin_retry_count =', config.clockin_retry_count, '（类型:', typeof config.clockin_retry_count, '）');
+        console.log('[配置加载] clockin_retry_delay =', config.clockin_retry_delay, '（类型:', typeof config.clockin_retry_delay, '）');
 
-        // 加载重试配置
-        document.getElementById('configClockinRetryCount').value = config.clockin_retry_count || 3;
-        document.getElementById('configClockinRetryDelay').value = config.clockin_retry_delay || 3;
-        document.getElementById('configClockinTimeout').value = config.clockin_timeout || 60;
-        document.getElementById('configClockinRateLimitDelay').value = config.clockin_rate_limit_delay || 10;
+        // 加载基本配置（使用 ?? 避免值为 0 时使用默认值）
+        document.getElementById('configApiRequestDelay').value = config.api_request_delay ?? 500;
+        document.getElementById('configClockinTypeDelay').value = config.clockin_type_delay ?? 2;
+
+        // 加载重试配置（使用 ?? 确保值为 0 时也能正确显示）
+        document.getElementById('configClockinRetryCount').value = config.clockin_retry_count ?? 3;
+        document.getElementById('configClockinRetryDelay').value = config.clockin_retry_delay ?? 3;
+        document.getElementById('configClockinTimeout').value = config.clockin_timeout ?? 60;
+        document.getElementById('configClockinRateLimitDelay').value = config.clockin_rate_limit_delay ?? 10;
 
         // 加载定时任务开关
         const scheduleEnabled = config.schedule_enabled !== undefined ? config.schedule_enabled : true;
@@ -1700,9 +1705,9 @@ async function openConfigModal() {
         // 更新时间预览
         updateTimePreview();
 
-        // 加载定时任务重试配置
-        document.getElementById('configScheduleRetryCount').value = config.schedule_retry_count || 3;
-        document.getElementById('configScheduleRetryDelay').value = config.schedule_retry_delay || 60;
+        // 加载定时任务重试配置（使用 ?? 避免值为 0 时使用默认值）
+        document.getElementById('configScheduleRetryCount').value = config.schedule_retry_count ?? 3;
+        document.getElementById('configScheduleRetryDelay').value = config.schedule_retry_delay ?? 60;
 
         // 加载调度器状态和倒计时
         await refreshScheduleInfo();

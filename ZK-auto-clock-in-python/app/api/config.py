@@ -229,7 +229,7 @@ async def export_config(
         configs = config_result.scalars().all()
         config_dict = {config.key: config.value for config in configs}
 
-        # 获取所有用户信息（不包括密码等敏感信息）
+        # 获取所有用户信息（包含密码以便恢复）
         user_result = await db.execute(select(User))
         users = user_result.scalars().all()
 
@@ -237,6 +237,7 @@ async def export_config(
         for user in users:
             user_dict = {
                 'username': user.username,
+                'password': user.password,  # 包含密码以便完整恢复
                 'nickname': user.nickname,
                 'enabled': user.enabled,
                 'sports_comment_type': user.sports_comment_type,
@@ -340,7 +341,7 @@ async def import_config(
             user = result.scalar_one_or_none()
 
             if user:
-                # 更新现有用户（不更新密码）
+                # 更新现有用户
                 user.nickname = user_data.get('nickname', user.nickname)
                 user.enabled = user_data.get('enabled', user.enabled)
                 user.sports_comment_type = user_data.get('sports_comment_type', user.sports_comment_type)
@@ -350,12 +351,35 @@ async def import_config(
                 user.sports_image_type = user_data.get('sports_image_type', user.sports_image_type)
                 user.sports_image_provider = user_data.get('sports_image_provider')
                 user.sports_image_category = user_data.get('sports_image_category')
+                # 如果导入文件包含密码，则更新密码
+                password = user_data.get('password')
+                if password:
+                    user.password = password
                 # 不导入 clockin_count 和 last_clockin，保持原有数据
                 updated_users += 1
             else:
-                # 新用户需要密码，跳过
-                logger.warning(f"用户 {username} 不存在，跳过导入（需要手动添加用户）")
-                continue
+                # 创建新用户（如果提供了密码）
+                password = user_data.get('password')
+                if password:
+                    new_user = User(
+                        username=username,
+                        password=password,
+                        nickname=user_data.get('nickname'),
+                        enabled=user_data.get('enabled', True),
+                        sports_comment_type=user_data.get('sports_comment_type', 'preset'),
+                        daily_comment_type=user_data.get('daily_comment_type', 'preset'),
+                        sports_comment_api=user_data.get('sports_comment_api'),
+                        daily_comment_api=user_data.get('daily_comment_api'),
+                        sports_image_type=user_data.get('sports_image_type', 'none'),
+                        sports_image_provider=user_data.get('sports_image_provider'),
+                        sports_image_category=user_data.get('sports_image_category'),
+                        clockin_count=0
+                    )
+                    db.add(new_user)
+                    imported_users += 1
+                    logger.info(f"导入新用户: {username}")
+                else:
+                    logger.warning(f"用户 {username} 不存在且导入数据中没有密码，跳过创建")
 
         # 导入执行器API配置
         worker_apis_data = import_data.get('worker_apis', [])
@@ -424,7 +448,7 @@ async def import_config(
 
         return SuccessResponse(
             success=True,
-            message=f"导入成功：{imported_configs} 条配置，{updated_users} 个用户更新，{imported_worker_apis} 个执行器API"
+            message=f"导入成功：{imported_configs} 条配置，{imported_users} 个用户导入，{updated_users} 个用户更新，{imported_worker_apis} 个执行器API"
         )
 
     except HTTPException:

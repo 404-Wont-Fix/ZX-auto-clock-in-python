@@ -165,18 +165,9 @@ class ClockinService:
                         # 标记失败（仅在最后一次失败时）
                         if attempt == max_retries:
                             await WorkerApiService.mark_failure(db, last_worker_api_id)
-                            # 尝试切换到另一个 API
-                            next_api = await WorkerApiService.get_next_api(db)
-                            if next_api and next_api.id != last_worker_api_id:
-                                logger.info(f"[用户 {user.username}] 切换到另一个 Worker API: {next_api.name}")
-                                # 完成当前任务追踪（失败）
-                                await ActiveTaskService.complete_task(user.id, success=False)
-                                # 递归调用（会创建新的任务追踪）
-                                return await ClockinService.call_clockin_api(
-                                    db, user, triggered_by, None, next_api
-                                )
 
-                            # 没有其他 API 可切换，返回错误
+                            # 不再自动切换 API（避免与队列机制冲突）
+                            # 返回错误，让上层决定是否重试
                             error_msg = f"API 请求失败: HTTP {status_code}"
                             try:
                                 error_detail = response.json()
@@ -220,22 +211,13 @@ class ClockinService:
                 except Exception as e:
                     logger.warning(f"[用户 {user.username}] 第 {attempt + 1} 次尝试失败: {e}")
 
-                    # 标记失败并尝试切换（仅在最后一次失败时）
+                    # 标记失败（仅在最后一次失败时）
                     if attempt == max_retries:
                         if last_worker_api_id:
                             await WorkerApiService.mark_failure(db, last_worker_api_id)
-                            # 尝试切换到另一个 API
-                            next_api = await WorkerApiService.get_next_api(db)
-                            if next_api and next_api.id != last_worker_api_id:
-                                logger.info(f"[用户 {user.username}] 切换到另一个 Worker API: {next_api.name}")
-                                # 完成当前任务追踪（失败）
-                                await ActiveTaskService.complete_task(user.id, success=False)
-                                # 递归调用（会创建新的任务追踪）
-                                return await ClockinService.call_clockin_api(
-                                    db, user, triggered_by, None, next_api
-                                )
 
-                        # 所有 API 都不可用，返回错误
+                        # 不再自动切换 API（避免与队列机制冲突）
+                        # 返回错误，让上层决定是否重试
                         return {
                             'success': False,
                             'error': str(e),
@@ -388,11 +370,25 @@ class ClockinService:
                 'failure': 0
             }
 
-        # 获取可用的 Worker API 数量
+        # 获取可用的 Worker API
         available_apis = await WorkerApiService.get_available_apis(db)
-        max_concurrent = len(available_apis) if available_apis else 1
 
-        logger.info(f"开始并行处理 {len(users)} 个用户的打卡，最大并发数: {max_concurrent}")
+        if not available_apis:
+            return {
+                'status': 'completed',
+                'message': '没有可用的 Worker API',
+                'total': len(users),
+                'success': 0,
+                'failure': len(users)
+            }
+
+        max_concurrent = len(available_apis)
+        logger.info(f"开始并行处理 {len(users)} 个用户的打卡，最大并发数: {max_concurrent}，可用 API 数量: {max_concurrent}")
+
+        # 创建 API 队列（预先分配 API，避免竞态条件）
+        api_queue = asyncio.Queue()
+        for api in available_apis:
+            await api_queue.put(api)
 
         # 创建信号量来限制并发数
         semaphore = asyncio.Semaphore(max_concurrent)
@@ -403,28 +399,39 @@ class ClockinService:
                 try:
                     logger.info(f"[{index + 1}/{len(users)}] 开始处理用户: {user.username}")
 
-                    # 调用打卡 API（会动态获取可用的 Worker API）
-                    result = await ClockinService.call_clockin_api(db, user, triggered_by)
+                    # 从队列中获取 API（阻塞等待，确保不会重复使用）
+                    worker_api = await api_queue.get()
 
-                    # 保存结果
-                    await ClockinService.save_clockin_result(db, user, result)
+                    try:
+                        logger.info(f"[{index + 1}/{len(users)}] 用户 {user.username} 使用 API: {worker_api.name}")
 
-                    # 更新用户信息
-                    await UserService.update_clockin_info(
-                        db,
-                        user.id,
-                        result.get('success', False),
-                        datetime.utcnow()
-                    )
+                        # 使用预先分配的 API 调用打卡
+                        result = await ClockinService.call_clockin_api(
+                            db, user, triggered_by, None, worker_api
+                        )
 
-                    success = result.get('success', False)
-                    logger.info(f"[{index + 1}/{len(users)}] 用户 {user.username} 打卡{'成功' if success else '失败'}")
+                        # 保存结果
+                        await ClockinService.save_clockin_result(db, user, result)
 
-                    return {
-                        'username': user.username,
-                        'success': success,
-                        'error': result.get('error')
-                    }
+                        # 更新用户信息
+                        await UserService.update_clockin_info(
+                            db,
+                            user.id,
+                            result.get('success', False),
+                            datetime.utcnow()
+                        )
+
+                        success = result.get('success', False)
+                        logger.info(f"[{index + 1}/{len(users)}] 用户 {user.username} 打卡{'成功' if success else '失败'}")
+
+                        return {
+                            'username': user.username,
+                            'success': success,
+                            'error': result.get('error')
+                        }
+                    finally:
+                        # 无论成功失败，都将 API 放回队列供其他用户使用
+                        await api_queue.put(worker_api)
 
                 except Exception as e:
                     logger.error(f"[{index + 1}/{len(users)}] 用户 {user.username} 打卡异常: {e}")

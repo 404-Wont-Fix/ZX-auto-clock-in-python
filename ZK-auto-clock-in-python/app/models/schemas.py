@@ -208,8 +208,15 @@ class ConfigUpdateRequest(BaseModel):
     default_worker_api_id: Optional[str] = None
     api_request_delay: Optional[int] = None
     clockin_type_delay: Optional[int] = None
+    clockin_retry_count: Optional[int] = None
+    clockin_retry_delay: Optional[int] = None
+    clockin_timeout: Optional[int] = None
+    clockin_rate_limit_delay: Optional[int] = None
     schedule_cron: Optional[str] = None
     schedule_enabled: Optional[bool] = None
+    schedule_timezone: Optional[str] = None
+    schedule_retry_count: Optional[int] = None
+    schedule_retry_delay: Optional[int] = None
     retention_days: Optional[int] = None
 
 
