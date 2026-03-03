@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     schedule_cron: str = "0 10 16 * * *"  # UTC 16:10 (北京时间 0:10)
     schedule_enabled: bool = True  # 定时任务开关
     schedule_timezone: str = "UTC"  # 定时任务时区
+    schedule_retry_count: int = 3  # 定时任务失败用户重试次数
+    schedule_retry_delay: int = 60  # 定时任务失败用户重试延迟（秒）
 
     # 数据保留天数
     retention_days: int = 7

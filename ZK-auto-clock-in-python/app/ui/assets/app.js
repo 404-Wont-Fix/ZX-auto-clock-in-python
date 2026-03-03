@@ -52,6 +52,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
+    // 初始化记录视图切换按钮文字
+    const btnText = document.getElementById('rangeToggleText');
+    if (btnText) {
+        btnText.textContent = currentRecordView === 'simple' ? '📊 切换到详细视图' : '📋 切换到简单视图';
+    }
+
     loadUsers();
     loadStats();
     loadRecords();
@@ -590,35 +596,54 @@ async function loadActiveTasks() {
 }
 
 // 加载打卡记录（支持简单视图和详细视图）
-let currentRecordView = 'simple';  // 'simple'（今日）或 'detailed'（3天内），默认简单视图
+let currentRecordView = 'simple';  // 'simple'（7天简单）或 'detailed'（3天详细），默认简单视图
 
 async function loadRecords() {
     console.log('[数据加载] 开始加载打卡记录, 视图:', currentRecordView);
     try {
         const url = currentRecordView === 'detailed'
             ? `/api/clockin/results?range=3days`
-            : `/api/clockin/results?date=${new Date().toISOString().split('T')[0]}`;
+            : `/api/clockin/results?range=week`;
 
         const response = await apiRequest(url);
         const data = await response.json();
         const container = document.getElementById('recordList');
 
         if (currentRecordView === 'detailed') {
-            // 详细视图：3天记录
-            renderWeekRecords(container, data.data);
-        } else {
-            // 简单视图：仅今日
-            const results = data.data.results || [];
-            if (results.length === 0) {
+            // 详细视图：3天记录，使用 record-card 格式
+            const weekData = data.data;
+            if (!weekData.dates || weekData.dates.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-icon">📊</div>
-                        <div>今日暂无打卡记录</div>
+                        <div>暂无打卡记录</div>
                     </div>
                 `;
                 return;
             }
-            renderDayRecords(container, results);
+
+            // 将所有日期的记录合并
+            let allResults = [];
+            weekData.dates.forEach(dayData => {
+                const results = dayData.results || [];
+                allResults = allResults.concat(results);
+            });
+
+            if (allResults.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📊</div>
+                        <div>暂无打卡记录</div>
+                    </div>
+                `;
+                return;
+            }
+
+            // 使用 record-card 格式渲染
+            renderDayRecords(container, allResults);
+        } else {
+            // 简单视图：7天记录，使用原来的简单格式（按日期分组）
+            renderWeekRecords(container, data.data);
         }
         console.log('[数据加载] 打卡记录加载完成');
     } catch (error) {
@@ -1064,7 +1089,7 @@ function toggleRecordRange() {
     currentRecordView = currentRecordView === 'simple' ? 'detailed' : 'simple';
     const btnText = document.getElementById('rangeToggleText');
     if (btnText) {
-        btnText.textContent = currentRecordView === 'simple' ? '📋 切换到简单视图' : '📊 切换到详细视图';
+        btnText.textContent = currentRecordView === 'simple' ? '📊 切换到详细视图' : '📋 切换到简单视图';
     }
     loadRecords();
 }
@@ -1675,6 +1700,10 @@ async function openConfigModal() {
         // 更新时间预览
         updateTimePreview();
 
+        // 加载定时任务重试配置
+        document.getElementById('configScheduleRetryCount').value = config.schedule_retry_count || 3;
+        document.getElementById('configScheduleRetryDelay').value = config.schedule_retry_delay || 60;
+
         // 加载调度器状态和倒计时
         await refreshScheduleInfo();
 
@@ -1816,6 +1845,17 @@ async function saveConfig() {
     // 强制使用北京时间
     config.schedule_timezone = 'Asia/Shanghai';
 
+    // 获取定时任务重试配置
+    const scheduleRetryCount = parseInt(document.getElementById('configScheduleRetryCount').value);
+    const scheduleRetryDelay = parseInt(document.getElementById('configScheduleRetryDelay').value);
+
+    if (!isNaN(scheduleRetryCount)) {
+        config.schedule_retry_count = scheduleRetryCount;
+    }
+    if (!isNaN(scheduleRetryDelay)) {
+        config.schedule_retry_delay = scheduleRetryDelay;
+    }
+
     try {
         const response = await apiRequest('/api/config', {
             method: 'PUT',
@@ -1833,6 +1873,75 @@ async function saveConfig() {
         if (error.message !== 'Unauthorized') {
             showToast('保存失败: ' + error.message, 'error');
         }
+    }
+}
+
+/**
+ * 导出配置
+ */
+async function exportConfig() {
+    try {
+        const response = await apiRequest('/api/config/export');
+        const data = await response.json();
+
+        // 创建 Blob 并下载
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `zk-admin-config-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast('配置导出成功', 'success');
+    } catch (error) {
+        if (error.message !== 'Unauthorized') {
+            showToast('导出失败: ' + error.message, 'error');
+        }
+    }
+}
+
+/**
+ * 导入配置
+ */
+async function importConfig(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+        // 读取文件内容
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        // 确认导入
+        if (!confirm(`确认导入配置？\n\n版本: ${data.version || '未知'}\n导出时间: ${data.exported_at || '未知'}\n用户数量: ${data.users?.length || 0}\n\n注意：导入将更新现有配置，但不会修改用户密码。`)) {
+            return;
+        }
+
+        // 调用导入 API
+        const response = await apiRequest('/api/config/import', {
+            method: 'POST',
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showToast(result.message || '配置导入成功', 'success');
+            // 刷新页面以应用新配置
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(result.error || '导入失败', 'error');
+        }
+    } catch (error) {
+        if (error.message !== 'Unauthorized') {
+            showToast('导入失败: ' + error.message, 'error');
+        }
+    } finally {
+        // 清空文件输入
+        event.target.value = '';
     }
 }
 

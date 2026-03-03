@@ -71,12 +71,108 @@ async def scheduled_clockin_job():
 
     try:
         from app.core.database import AsyncSessionLocal
+        from app.services.user_service import UserService
+        from sqlalchemy import select
+        from app.models.database import User
+        from datetime import datetime
+        import asyncio
 
         async with AsyncSessionLocal() as db:
+            # 获取重试配置
+            max_retry_rounds = settings.schedule_retry_count
+            retry_delay = settings.schedule_retry_delay
+
+            logger.info(f"定时任务重试配置: 最多 {max_retry_rounds} 轮重试，每轮间隔 {retry_delay} 秒")
+
             # 触发所有用户打卡（标记为 scheduled）
             result = await ClockinService.trigger_all_users(db, triggered_by='scheduled')
-
             logger.info(f"定时打卡任务完成: {result}")
+
+            # 收集失败的用户
+            failed_users = []
+            for user_result in result.get('results', []):
+                if not user_result.get('success'):
+                    failed_users.append(user_result['username'])
+
+            # 如果有失败的用户，开始重试
+            if failed_users:
+                logger.info(f"检测到 {len(failed_users)} 个用户打卡未完成: {failed_users}")
+
+                # 多轮重试
+                for retry_round in range(1, max_retry_rounds + 1):
+                    if not failed_users:
+                        break  # 所有用户都成功了，退出重试
+
+                    logger.info(f"=== 第 {retry_round}/{max_retry_rounds} 轮重试开始 ===")
+                    logger.info(f"等待 {retry_delay} 秒后开始重试...")
+                    await asyncio.sleep(retry_delay)
+
+                    # 获取失败的用户并重试
+                    retry_results = []
+                    still_failed_users = []
+
+                    for username in failed_users:
+                        user_query = await db.execute(
+                            select(User).where(User.username == username, User.enabled == True)
+                        )
+                        user = user_query.scalar_one_or_none()
+
+                        if user:
+                            logger.info(f"[第 {retry_round} 轮] 开始重试用户: {username}")
+                            # 调用打卡 API（标记为 manual，表示补签）
+                            retry_result = await ClockinService.call_clockin_api(
+                                db, user, triggered_by='manual'
+                            )
+
+                            # 保存结果
+                            await ClockinService.save_clockin_result(db, user, retry_result)
+
+                            # 更新用户信息
+                            await UserService.update_clockin_info(
+                                db,
+                                user.id,
+                                retry_result.get('success', False),
+                                datetime.utcnow()
+                            )
+
+                            success = retry_result.get('success', False)
+                            retry_results.append({
+                                'username': username,
+                                'success': success,
+                                'error': retry_result.get('error')
+                            })
+
+                            # 检查是否三个打卡都完成了
+                            if success and retry_result.get('results'):
+                                results = retry_result['results']
+                                completed_count = sum(1 for r in results.values() if r.get('success'))
+                                if completed_count < 3:
+                                    logger.warning(f"用户 {username} 重试后仍只完成 {completed_count}/3 个打卡")
+
+                            # 如果仍然失败，加入下一轮重试列表
+                            if not success:
+                                still_failed_users.append(username)
+                            else:
+                                logger.info(f"用户 {username} 重试成功")
+
+                            # 每个用户之间间隔5秒，避免频率限制
+                            await asyncio.sleep(5)
+
+                    logger.info(f"[第 {retry_round} 轮] 重试打卡完成: {retry_results}")
+
+                    # 更新失败用户列表
+                    failed_users = still_failed_users
+
+                    # 如果没有失败用户了，提前退出
+                    if not failed_users:
+                        logger.info(f"所有用户在第 {retry_round} 轮重试后全部成功")
+                        break
+
+                # 所有重试轮次结束后，记录最终失败的用户
+                if failed_users:
+                    logger.warning(f"经过 {max_retry_rounds} 轮重试后，仍有 {len(failed_users)} 个用户打卡失败: {failed_users}")
+                else:
+                    logger.info("所有用户打卡成功")
 
     except Exception as e:
         logger.error(f"定时打卡任务失败: {e}", exc_info=True)

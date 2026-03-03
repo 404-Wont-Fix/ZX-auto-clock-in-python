@@ -696,6 +696,28 @@
                                 </div>
                             </div>
 
+                            <!-- 定时任务重试配置 -->
+                            <div style="margin-top: 15px; padding: 12px; background: rgba(102, 126, 234, 0.1); border-radius: 8px; border: 1px solid rgba(102, 126, 234, 0.3);">
+                                <div style="font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--primary-color); display: flex; align-items: center; gap: 6px;">
+                                    <span>🔄</span> 定时任务失败重试配置
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <div>
+                                        <label style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; display: block;">最大重试轮次</label>
+                                        <input type="number" class="form-input" id="configScheduleRetryCount" value="3" min="0" max="10" step="1" style="font-size: 13px;">
+                                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 3px;">0-10轮</div>
+                                    </div>
+                                    <div>
+                                        <label style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; display: block;">重试间隔（秒）</label>
+                                        <input type="number" class="form-input" id="configScheduleRetryDelay" value="60" min="10" max="600" step="10" style="font-size: 13px;">
+                                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 3px;">10-600秒</div>
+                                    </div>
+                                </div>
+                                <div style="font-size: 11px; color: var(--text-secondary); margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.05);">
+                                    ℹ️ 定时任务执行后，对于失败的用户会等待指定时间后进行多轮重试，每轮重试会间隔指定秒数
+                                </div>
+                            </div>
+
                             <!-- 测试定时任务按钮 -->
                             <div style="margin-top: 10px; display: flex; gap: 10px;">
                                 <button class="btn" onclick="testScheduleTask()" id="testScheduleBtn" style="flex: 1;">
@@ -719,6 +741,27 @@
                             </div>
                         </div>
                     </div>
+                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                    <!-- 数据管理 -->
+                    <div style="padding: 15px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 20px;">
+                        <div style="font-size: 15px; font-weight: 600; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+                            <span>💾</span> 数据管理
+                        </div>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="btn" onclick="exportConfig()" style="flex: 1;">
+                                <span>📤</span> 导出配置
+                            </button>
+                            <button class="btn" onclick="document.getElementById('importFileInput').click()" style="flex: 1;">
+                                <span>📥</span> 导入配置
+                            </button>
+                            <input type="file" id="importFileInput" accept=".json" style="display: none;" onchange="importConfig(event)">
+                        </div>
+                        <div style="margin-top: 10px; font-size: 12px; color: var(--text-secondary);">
+                            <strong>提示：</strong>导出功能会保存系统配置和用户信息（不含密码）。导入可恢复配置和更新用户信息。
+                        </div>
+                    </div>
+
                     <div style="padding: 12px; background: var(--bg-tertiary); border-radius: 6px; font-size: 13px; color: var(--text-secondary); margin-top: 15px;">
                         <strong>提示：</strong>配置将保存到数据库中，优先级高于环境变量。定时任务时间修改后会自动重新加载，无需重启。关闭开关可暂停自动打卡。Worker API 请在 "Worker API" 标签页中配置。
                     </div>
