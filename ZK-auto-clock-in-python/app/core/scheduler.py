@@ -71,108 +71,24 @@ async def scheduled_clockin_job():
 
     try:
         from app.core.database import AsyncSessionLocal
-        from app.services.user_service import UserService
-        from sqlalchemy import select
-        from app.models.database import User
-        from datetime import datetime
-        import asyncio
 
         async with AsyncSessionLocal() as db:
-            # 获取重试配置
-            max_retry_rounds = settings.schedule_retry_count
-            retry_delay = settings.schedule_retry_delay
-
-            logger.info(f"定时任务重试配置: 最多 {max_retry_rounds} 轮重试，每轮间隔 {retry_delay} 秒")
-
             # 触发所有用户打卡（标记为 scheduled）
+            # 注意：trigger_all_users 内部已经包含自动补签逻辑，不需要在这里重复处理
             result = await ClockinService.trigger_all_users(db, triggered_by='scheduled')
-            logger.info(f"定时打卡任务完成: {result}")
 
-            # 收集失败的用户
-            failed_users = []
-            for user_result in result.get('results', []):
-                if not user_result.get('success'):
-                    failed_users.append(user_result['username'])
+            # 记录结果
+            success_count = result.get('success', 0)
+            failure_count = result.get('failure', 0)
+            total_duration = result.get('duration_seconds', 0)
 
-            # 如果有失败的用户，开始重试
-            if failed_users:
-                logger.info(f"检测到 {len(failed_users)} 个用户打卡未完成: {failed_users}")
+            logger.info(f"=== 定时打卡任务完成 ===")
+            logger.info(f"总计: {result.get('total', 0)} 个用户")
+            logger.info(f"成功: {success_count} 个, 失败: {failure_count} 个")
+            logger.info(f"总耗时: {total_duration:.2f} 秒")
 
-                # 多轮重试
-                for retry_round in range(1, max_retry_rounds + 1):
-                    if not failed_users:
-                        break  # 所有用户都成功了，退出重试
-
-                    logger.info(f"=== 第 {retry_round}/{max_retry_rounds} 轮重试开始 ===")
-                    logger.info(f"等待 {retry_delay} 秒后开始重试...")
-                    await asyncio.sleep(retry_delay)
-
-                    # 获取失败的用户并重试
-                    retry_results = []
-                    still_failed_users = []
-
-                    for username in failed_users:
-                        user_query = await db.execute(
-                            select(User).where(User.username == username, User.enabled == True)
-                        )
-                        user = user_query.scalar_one_or_none()
-
-                        if user:
-                            logger.info(f"[第 {retry_round} 轮] 开始重试用户: {username}")
-                            # 调用打卡 API（标记为 manual，表示补签）
-                            retry_result = await ClockinService.call_clockin_api(
-                                db, user, triggered_by='manual'
-                            )
-
-                            # 保存结果
-                            await ClockinService.save_clockin_result(db, user, retry_result)
-
-                            # 更新用户信息
-                            await UserService.update_clockin_info(
-                                db,
-                                user.id,
-                                retry_result.get('success', False),
-                                datetime.utcnow()
-                            )
-
-                            success = retry_result.get('success', False)
-                            retry_results.append({
-                                'username': username,
-                                'success': success,
-                                'error': retry_result.get('error')
-                            })
-
-                            # 检查是否三个打卡都完成了
-                            if success and retry_result.get('results'):
-                                results = retry_result['results']
-                                completed_count = sum(1 for r in results.values() if r.get('success'))
-                                if completed_count < 3:
-                                    logger.warning(f"用户 {username} 重试后仍只完成 {completed_count}/3 个打卡")
-
-                            # 如果仍然失败，加入下一轮重试列表
-                            if not success:
-                                still_failed_users.append(username)
-                            else:
-                                logger.info(f"用户 {username} 重试成功")
-
-                            # 每个用户之间间隔5秒，避免频率限制
-                            await asyncio.sleep(5)
-
-                    logger.info(f"[第 {retry_round} 轮] 重试打卡完成: {retry_results}")
-
-                    # 更新失败用户列表
-                    failed_users = still_failed_users
-
-                    # 如果没有失败用户了，提前退出
-                    if not failed_users:
-                        logger.info(f"所有用户在第 {retry_round} 轮重试后全部成功")
-                        break
-
-                # 所有重试轮次结束后，记录最终失败的用户
-                if failed_users:
-                    logger.warning(f"经过 {max_retry_rounds} 轮重试后，仍有 {len(failed_users)} 个用户打卡失败: {failed_users}")
-                else:
-                    logger.info("所有用户打卡成功")
+            if failure_count > 0:
+                logger.warning(f"有 {failure_count} 个用户打卡失败，已在 trigger_all_users 中自动执行补签")
 
     except Exception as e:
         logger.error(f"定时打卡任务失败: {e}", exc_info=True)
@@ -209,6 +125,15 @@ async def cleanup_job():
 
     except Exception as e:
         logger.error(f"定时清理任务失败: {e}", exc_info=True)
+
+    # 清理活动任务（防止任务泄漏）
+    try:
+        from app.services.active_task_service import ActiveTaskService
+        stale_count = await ActiveTaskService.cleanup_stale_tasks(max_age_seconds=300)  # 清理5分钟未完成的任务
+        if stale_count > 0:
+            logger.warning(f"清理了 {stale_count} 个过期的活动任务")
+    except Exception as e:
+        logger.error(f"清理活动任务失败: {e}")
 
 
 def start_scheduler():
@@ -331,9 +256,11 @@ def stop_scheduler():
     global scheduler
 
     if scheduler is not None:
-        scheduler.shutdown(wait=False)
+        logger.info("正在停止调度器...")
+        # 使用 wait=True 等待正在执行的任务完成
+        scheduler.shutdown(wait=True)
         scheduler = None
-        logger.info("调度器已停止")
+        logger.info("调度器已安全停止")
 
 
 async def reload_clockin_job(cron_expression: str, enabled: bool = True, timezone: str = None):
@@ -425,10 +352,19 @@ async def get_schedule_info():
 
     job = scheduler.get_job('clockin')
     if job:
+        next_run_time = job.next_run_time
+        next_run_time_str = next_run_time.isoformat() if next_run_time else None
+
+        # 添加调试日志
+        if next_run_time:
+            logger.info(f"定时任务下次执行时间 (UTC): {next_run_time}")
+            logger.info(f"定时任务下次执行时间 (北京): {next_run_time.astimezone(pytz.timezone('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M:%S %Z')}")
+
         return {
             'id': job.id,
             'name': job.name,
-            'next_run_time': job.next_run_time.isoformat() if job.next_run_time else None,
+            'next_run_time': next_run_time_str,
+            'next_run_time_beijing': next_run_time.astimezone(pytz.timezone('Asia/Shanghai')).isoformat() if next_run_time else None,
             'trigger': str(job.trigger)
         }
     return None

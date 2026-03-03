@@ -19,6 +19,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# 关闭 SQLAlchemy 的 SQL 语句日志
+logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -46,6 +50,16 @@ async def lifespan(app: FastAPI):
 
     # 关闭
     logger.info("=== ZK Admin 关闭中 ===")
+
+    # 清理活动任务（防止任务泄漏）
+    try:
+        from app.services.active_task_service import ActiveTaskService
+        stale_count = await ActiveTaskService.cleanup_stale_tasks(max_age_seconds=0)  # 清理所有
+        if stale_count > 0:
+            logger.warning(f"清理了 {stale_count} 个未完成的活动任务")
+    except Exception as e:
+        logger.error(f"清理活动任务失败: {e}")
+
     stop_scheduler()
     await close_db()
     logger.info("已清理资源")

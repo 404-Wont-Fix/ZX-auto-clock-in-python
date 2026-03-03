@@ -200,6 +200,10 @@ class ClockinService:
                     result['sports_image_provider'] = user.sports_image_provider
                     result['sports_image_category'] = user.sports_image_category
 
+                    # 重新计算整体成功状态（覆盖外部 API 的 success 字段）
+                    details = result.get('results', {})
+                    result['success'] = ClockinService._calculate_overall_success(details)
+
                     # 标记成功
                     if last_worker_api_id:
                         await WorkerApiService.mark_success(db, last_worker_api_id)
@@ -238,13 +242,16 @@ class ClockinService:
                             await asyncio.sleep(max(1, retry_delay // 2))
                         continue
         finally:
-            # 完成任务追踪（仅在非递归调用时）
-            # 递归调用会自己管理任务追踪
-            if retries is None or task_success:
+            # 确保任务追踪总是被清理（无论成功或失败）
+            # 避免任务泄漏到活动任务列表中
+            try:
                 await ActiveTaskService.complete_task(
                     user_id=user.id,
                     success=task_success
                 )
+            except Exception as e:
+                # 记录错误但不影响主流程
+                logger.error(f"清理活动任务失败: {e}")
 
     @staticmethod
     async def save_clockin_result(
@@ -252,13 +259,15 @@ class ClockinService:
         user: User,
         result: Dict
     ) -> ClockinResult:
-        """保存打卡结果"""
+        """保存打卡结果（带事务处理）"""
         date = datetime.utcnow().strftime('%Y-%m-%d')
         timestamp = result.get('timestamp', datetime.utcnow().isoformat())
 
         # 构建详情 JSON
         details = result.get('results', {})
 
+        # 注意：result['success'] 已经在 call_clockin_api 中重新计算过了
+        # 这里直接使用即可
         clockin_result = ClockinResult(
             user_id=user.id,
             username=user.username,
@@ -283,13 +292,19 @@ class ClockinService:
             error=result.get('error')
         )
 
-        db.add(clockin_result)
-        await db.commit()
+        try:
+            db.add(clockin_result)
+            await db.flush()  # 先 flush 以获取 ID，但不提交事务
 
-        # 更新每日汇总
-        await ClockinService._update_daily_summary(db, date, clockin_result)
+            # 更新每日汇总
+            await ClockinService._update_daily_summary(db, date, clockin_result)
 
-        return clockin_result
+            await db.commit()  # 统一提交事务
+            return clockin_result
+        except Exception as e:
+            logger.error(f"保存打卡结果失败，正在回滚: {e}")
+            await db.rollback()
+            raise
 
     @staticmethod
     async def _update_daily_summary(
@@ -297,7 +312,7 @@ class ClockinService:
         date: str,
         result: ClockinResult
     ):
-        """更新每日汇总"""
+        """更新每日汇总（不提交事务，由调用者统一提交）"""
         summary = await db.execute(select(DailySummary).where(DailySummary.date == date))
         summary = summary.scalar_one_or_none()
 
@@ -344,8 +359,6 @@ class ClockinService:
         summary.end_time = datetime.utcnow()
         if not summary.start_time:
             summary.start_time = result.timestamp or datetime.utcnow()
-
-        await db.commit()
 
     @staticmethod
     async def trigger_all_users(
@@ -394,52 +407,56 @@ class ClockinService:
         semaphore = asyncio.Semaphore(max_concurrent)
 
         async def process_user(user: User, index: int) -> Dict:
-            """处理单个用户的打卡"""
+            """处理单个用户的打卡（使用独立的数据库 session）"""
             async with semaphore:
-                try:
-                    logger.info(f"[{index + 1}/{len(users)}] 开始处理用户: {user.username}")
+                # 为每个任务创建独立的数据库 session，避免并发冲突
+                from app.core.database import AsyncSessionLocal
 
-                    # 从队列中获取 API（阻塞等待，确保不会重复使用）
-                    worker_api = await api_queue.get()
-
+                async with AsyncSessionLocal() as user_db:
                     try:
-                        logger.info(f"[{index + 1}/{len(users)}] 用户 {user.username} 使用 API: {worker_api.name}")
+                        logger.info(f"[{index + 1}/{len(users)}] 开始处理用户: {user.username}")
 
-                        # 使用预先分配的 API 调用打卡
-                        result = await ClockinService.call_clockin_api(
-                            db, user, triggered_by, None, worker_api
-                        )
+                        # 从队列中获取 API（阻塞等待，确保不会重复使用）
+                        worker_api = await api_queue.get()
 
-                        # 保存结果
-                        await ClockinService.save_clockin_result(db, user, result)
+                        try:
+                            logger.info(f"[{index + 1}/{len(users)}] 用户 {user.username} 使用 API: {worker_api.name}")
 
-                        # 更新用户信息
-                        await UserService.update_clockin_info(
-                            db,
-                            user.id,
-                            result.get('success', False),
-                            datetime.utcnow()
-                        )
+                            # 使用预先分配的 API 调用打卡（使用独立的 session）
+                            result = await ClockinService.call_clockin_api(
+                                user_db, user, triggered_by, None, worker_api
+                            )
 
-                        success = result.get('success', False)
-                        logger.info(f"[{index + 1}/{len(users)}] 用户 {user.username} 打卡{'成功' if success else '失败'}")
+                            # 保存结果（使用独立的 session）
+                            await ClockinService.save_clockin_result(user_db, user, result)
 
+                            # 更新用户信息（使用独立的 session）
+                            await UserService.update_clockin_info(
+                                user_db,
+                                user.id,
+                                result.get('success', False),
+                                datetime.utcnow()
+                            )
+
+                            success = result.get('success', False)
+                            logger.info(f"[{index + 1}/{len(users)}] 用户 {user.username} 打卡{'成功' if success else '失败'}")
+
+                            return {
+                                'username': user.username,
+                                'success': success,
+                                'error': result.get('error')
+                            }
+                        finally:
+                            # 无论成功失败，都将 API 放回队列供其他用户使用
+                            await api_queue.put(worker_api)
+
+                    except Exception as e:
+                        logger.error(f"[{index + 1}/{len(users)}] 用户 {user.username} 打卡异常: {e}", exc_info=True)
                         return {
                             'username': user.username,
-                            'success': success,
-                            'error': result.get('error')
+                            'success': False,
+                            'error': str(e)
                         }
-                    finally:
-                        # 无论成功失败，都将 API 放回队列供其他用户使用
-                        await api_queue.put(worker_api)
-
-                except Exception as e:
-                    logger.error(f"[{index + 1}/{len(users)}] 用户 {user.username} 打卡异常: {e}")
-                    return {
-                        'username': user.username,
-                        'success': False,
-                        'error': str(e)
-                    }
 
         # 创建所有任务
         tasks = [
@@ -470,14 +487,135 @@ class ClockinService:
 
         logger.info(f"并行打卡完成: 成功 {success_count}, 失败 {failure_count}, 耗时: {duration:.2f}秒")
 
+        # 自动重试失败的用户的逻辑（手动和定时任务都支持）
+        failed_users = []
+        for result in valid_results:
+            # 使用新的判断逻辑：检查是否有打卡类型真正失败（排除"已完成"的情况）
+            if ClockinService._needs_retry(result):
+                failed_users.append(result['username'])
+
+        if failed_users:
+            # 定时任务和手动打卡都会自动重试失败的打卡类型
+            logger.info(f"╔══════════════════════════════════════════════════════════════╗")
+            logger.info(f"║  🔄 【自动补签】检测到 {len(failed_users)} 个用户有未完成的打卡  ║")
+            logger.info(f"║  失败用户列表: {', '.join(failed_users)}                              ║")
+            logger.info(f"╚══════════════════════════════════════════════════════════════╝")
+
+            # 获取重试配置
+            from app.config import settings
+            max_retry_rounds = settings.schedule_retry_count
+            retry_delay = settings.schedule_retry_delay
+
+            logger.info(f"开始自动重试（触发方式: {triggered_by}）: 最多 {max_retry_rounds} 轮重试，每轮间隔 {retry_delay} 秒")
+
+            # 多轮重试
+            for retry_round in range(1, max_retry_rounds + 1):
+                logger.info(f"╔══════════════════════════════════════════════════════════════╗")
+                logger.info(f"║  🔄 【第 {retry_round}/{max_retry_rounds} 轮自动补签】开始执行                     ║")
+                logger.info(f"╚══════════════════════════════════════════════════════════════╝")
+                if not failed_users:
+                    break
+
+                logger.info(f"=== 第 {retry_round}/{max_retry_rounds} 轮重试开始 ===")
+                logger.info(f"等待 {retry_delay} 秒后开始重试...")
+                await asyncio.sleep(retry_delay)
+
+                retry_results = []
+                still_failed_users = []
+
+                for username in failed_users:
+                    user_query = await db.execute(
+                        select(User).where(User.username == username, User.enabled == True)
+                    )
+                    user = user_query.scalar_one_or_none()
+
+                    if user:
+                        logger.info(f"[第 {retry_round} 轮] 开始重试用户: {username}")
+
+                        try:
+                            # 调用打卡 API（标记为 retry，表示补签）
+                            retry_result = await ClockinService.call_clockin_api(
+                                db, user, triggered_by='retry'
+                            )
+
+                            # 保存结果
+                            await ClockinService.save_clockin_result(db, user, retry_result)
+
+                            # 更新用户信息
+                            await UserService.update_clockin_info(
+                                db,
+                                user.id,
+                                retry_result.get('success', False),
+                                datetime.utcnow()
+                            )
+
+                            success = retry_result.get('success', False)
+                            retry_results.append({
+                                'username': username,
+                                'success': success,
+                                'error': retry_result.get('error')
+                            })
+
+                            # 检查是否还需要重试（使用统一的判断逻辑）
+                            needs_retry = ClockinService._needs_retry(retry_result)
+                            if needs_retry:
+                                # 记录哪些打卡类型还未完成
+                                if retry_result.get('results'):
+                                    results_data = retry_result['results']
+                                    failed_types = [
+                                        f"{name}({r.get('message', '失败')})"
+                                        for name, r in results_data.items()
+                                        if not r.get('success') and not any(kw in r.get('message', '') for kw in ['今日已完成', '已完成'])
+                                    ]
+                                    if failed_types:
+                                        logger.warning(f"用户 {username} 重试后仍有打卡未完成: {', '.join(failed_types)}")
+
+                            # 如果仍需要重试，加入下一轮重试列表
+                            if needs_retry:
+                                still_failed_users.append(username)
+                            else:
+                                logger.info(f"用户 {username} 重试成功")
+
+                            # 每个用户之间间隔5秒，避免频率限制
+                            await asyncio.sleep(5)
+                        except Exception as e:
+                            logger.error(f"[第 {retry_round} 轮] 用户 {username} 重试异常: {e}", exc_info=True)
+                            still_failed_users.append(username)
+
+                logger.info(f"[第 {retry_round} 轮] 重试打卡完成: {retry_results}")
+
+                # 更新失败用户列表
+                failed_users = still_failed_users
+
+                if not failed_users:
+                    logger.info(f"所有用户在第 {retry_round} 轮重试后全部成功")
+                    break
+
+            if failed_users:
+                logger.warning(f"╔══════════════════════════════════════════════════════════════╗")
+                logger.warning(f"║  ❌ 【自动补签结束】仍有 {len(failed_users)} 个用户打卡失败  ║")
+                logger.warning(f"║  失败用户: {', '.join(failed_users)}                                 ║")
+                logger.warning(f"╚══════════════════════════════════════════════════════════════╝")
+            else:
+                logger.info(f"╔══════════════════════════════════════════════════════════════╗")
+                logger.info(f"║  ✅ 【自动补签结束】所有用户打卡成功                      ║")
+                logger.info(f"╚══════════════════════════════════════════════════════════════╝")
+
+        # 重新统计最终结果（确保计数准确）
+        final_success_count = sum(1 for r in valid_results if r.get('success'))
+        final_failure_count = len(valid_results) - final_success_count
+
+        total_duration = (datetime.now() - start_time).total_seconds()
+        logger.info(f"打卡任务全部完成: 成功 {final_success_count}, 失败 {final_failure_count}, 总耗时: {total_duration:.2f}秒")
+
         return {
             'status': 'completed',
-            'message': f'打卡完成: 成功 {success_count}, 失败 {failure_count}, 耗时 {duration:.2f}秒',
+            'message': f'打卡完成: 成功 {final_success_count}, 失败 {final_failure_count}, 耗时: {total_duration:.2f}秒',
             'total': len(users),
-            'success': success_count,
-            'failure': failure_count,
+            'success': final_success_count,
+            'failure': final_failure_count,
             'results': valid_results,
-            'duration_seconds': duration
+            'duration_seconds': total_duration
         }
 
     @staticmethod
@@ -596,6 +734,88 @@ class ClockinService:
             'summary': summary.to_dict() if summary else None,
             'results': [r.to_dict() for r in results]
         }
+
+    @staticmethod
+    def _calculate_overall_success(details: Dict) -> bool:
+        """
+        基于打卡类型详情计算整体成功状态
+
+        判断逻辑：
+        - 如果所有打卡类型都成功，返回 True
+        - 如果有打卡类型失败，但失败消息包含"今日已完成"、"已完成"等关键词（表示已经完成过），也视为成功
+        - 如果有任何打卡类型真正失败（非"已完成"原因），返回 False
+
+        Args:
+            details: 打卡类型详情字典 (results)
+
+        Returns:
+            整体是否成功
+        """
+        if not details:
+            return False
+
+        # 已完成的关键词（视为成功，不需要重试）
+        completed_keywords = ['今日已完成', '已完成']
+
+        for clockin_type, type_result in details.items():
+            if isinstance(type_result, dict):
+                success = type_result.get('success', False)
+                message = type_result.get('message', '')
+
+                # 如果这个打卡类型失败
+                if not success:
+                    # 检查是否因为"已完成"而失败
+                    is_completed = any(keyword in message for keyword in completed_keywords)
+                    if not is_completed:
+                        # 不是因为"已完成"，这是一个真正的失败
+                        logger.info(f"打卡类型 {clockin_type} 真正失败: {message}")
+                        return False
+
+        # 所有打卡类型都成功（或因为"已完成"而失败），整体视为成功
+        return True
+
+    @staticmethod
+    def _needs_retry(result: Dict) -> bool:
+        """
+        判断打卡结果是否需要重试
+
+        排除情况：
+        - 整体成功且所有打卡类型都成功
+        - 打卡类型失败但消息包含"今日已完成"、"已完成"等（表示已经完成过）
+
+        Args:
+            result: 打卡结果字典
+
+        Returns:
+            是否需要重试
+        """
+        # 整体失败肯定需要重试
+        if not result.get('success'):
+            return True
+
+        # 检查各个打卡类型
+        results = result.get('results', {})
+        if not results:
+            return False
+
+        # 已完成的关键词（不需要重试）
+        completed_keywords = ['今日已完成', '已完成']
+
+        for clockin_type, type_result in results.items():
+            if isinstance(type_result, dict):
+                success = type_result.get('success', False)
+                message = type_result.get('message', '')
+
+                # 如果这个打卡类型失败
+                if not success:
+                    # 检查是否因为"已完成"而失败
+                    is_completed = any(keyword in message for keyword in completed_keywords)
+                    if not is_completed:
+                        # 不是因为"已完成"，需要重试
+                        logger.info(f"检测到打卡类型 {clockin_type} 需要重试: {message}")
+                        return True
+
+        return False
 
     @staticmethod
     async def get_stats(db: AsyncSession) -> Dict:

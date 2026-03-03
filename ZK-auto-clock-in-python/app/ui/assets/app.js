@@ -684,6 +684,7 @@ function renderDayRecords(container, results) {
         // 格式化时间
         const timeStr = formatTime(result.timestamp);
         const isScheduled = result.triggered_by === 'scheduled';
+        const isRetry = result.triggered_by === 'retry';
         const durationStr = result.duration_ms ? `${Math.round(result.duration_ms / 1000)}s` : null;
 
         return `
@@ -707,8 +708,8 @@ function renderDayRecords(container, results) {
                             </span>
                             ` : ''}
                             <span class="record-trigger-badge">
-                                <span>${isScheduled ? '🤖' : '👤'}</span>
-                                <span>${isScheduled ? '定时' : '手动'}</span>
+                                <span>${isScheduled ? '🤖' : (isRetry ? '🔄' : '👤')}</span>
+                                <span>${isScheduled ? '定时' : (isRetry ? '补签' : '手动')}</span>
                             </span>
                         </div>
                     </div>
@@ -1965,8 +1966,16 @@ async function refreshScheduleInfo() {
         const data = await response.json();
 
         if (data.success && data.data.job_info && data.data.job_info.next_run_time) {
-            // 更新下次执行时间
-            nextRunTime = new Date(data.data.job_info.next_run_time);
+            // 优先使用北京时间（如果后端提供）
+            const timeStr = data.data.job_info.next_run_time_beijing || data.data.job_info.next_run_time;
+            nextRunTime = new Date(timeStr);
+
+            // 输出调试信息
+            console.log('📅 从后端获取的执行时间:');
+            console.log('  UTC 时间:', data.data.job_info.next_run_time);
+            console.log('  北京时间:', data.data.job_info.next_run_time_beijing || '未提供');
+            console.log('  使用时间:', timeStr);
+
             updateCountdownDisplay();
         } else {
             // 调度器未运行或没有配置
@@ -1996,6 +2005,12 @@ function updateCountdownDisplay() {
         document.getElementById('scheduleCountdown').textContent = '✅ 即将执行';
         return;
     }
+
+    // 调试信息：在控制台输出时间信息
+    console.log('📅 定时任务调试信息:');
+    console.log('  当前时间:', now.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }));
+    console.log('  下次执行:', nextRunTime.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }));
+    console.log('  原始时间:', nextRunTime.toISOString());
 
     // 计算倒计时
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
