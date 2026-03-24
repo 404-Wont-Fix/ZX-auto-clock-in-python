@@ -1,0 +1,12 @@
+name = "zk-clockin-executor-api-2"
+main = "worker.js"
+compatibility_date = "2026-02-24"
+
+# 部署配置
+workers_dev = true              # 启用 workers.dev 域名（如 xxx.workers.dev）
+preview_urls_setting = "disabled"  # 禁用预览 URL（提高安全性）
+
+[vars]
+ENVIRONMENT = "production"
+API_TOKEN = "35a59c73-461e-499d-8421-3311c289328e"
+ENABLE_LOGGING = "false"  # 生产环境建议关闭日志

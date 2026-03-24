@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # clockin-worker 配置
     clockin_api_url: str = "https://zk-clockin-executor.xxx.workers.dev"
-    clockin_api_token: str = "local-dev-token-Tian"
+    clockin_api_token: str = "35a59c73-461e-499d-8421-3311c289328e"
 
     # 打卡延迟配置
     api_request_delay: int = 500  # API 请求延迟（毫秒）：获取诗词/图片等外部 API 时的延迟

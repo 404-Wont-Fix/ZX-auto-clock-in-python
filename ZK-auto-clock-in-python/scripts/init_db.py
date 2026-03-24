@@ -70,7 +70,7 @@ async def init_default_config():
                 },
                 {
                     'key': 'clockin_api_token',
-                    'value': 'local-dev-token-Tian',
+                    'value': '35a59c73-461e-499d-8421-3311c289328e',
                     'description': '打卡 API 令牌（后备方案）'
                 },
                 {
