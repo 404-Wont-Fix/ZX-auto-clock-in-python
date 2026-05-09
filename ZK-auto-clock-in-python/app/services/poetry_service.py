@@ -25,7 +25,7 @@ class PoetryService:
     POETRY_APIS = {
         'poetry_all': 'https://v1.jinrishici.com/all.json',
         'hitokoto': 'https://v1.hitokoto.cn/',
-        'cenguigui': 'https://api-v2.cenguigui.cn/api/yiyan/?code=json',
+        # 'cenguigui': 'https://api-v2.cenguigui.cn/api/yiyan/?code=json',  # API 已失效，暂时注释
         'yuanmeng': 'https://api.mmp.cc/api/yiyan?format=json',
         'klapi': 'https://www.klapi.cn/api/yiyan.php?type=json',
     }
@@ -34,8 +34,8 @@ class PoetryService:
     IMAGE_APIS = {
         'bing': 'https://www.bing.com/HPImageArchive.aspx?format=js&n=1&mkt=zh-CN',
         'bing_uhd': 'https://bing.img.run/uhd.php',
-        'komll': 'https://api.komll.com/images',
-        'loliapi': 'https://www.loliapi.com/acg/',
+        # 'komll': 'https://api.komll.com/images',  # 暂时禁用：URL 无扩展名，导致图片验证失败
+        # 'loliapi': 'https://www.loliapi.com/acg/',  # 暂时禁用：返回 WebP 格式，精夏平台不支持
     }
 
     # 次元 API 分类（与原JS项目保持一致）
@@ -99,7 +99,7 @@ class PoetryService:
 
     @staticmethod
     async def get_sports_image(user: User) -> Optional[Dict[str, str]]:
-        """获取运动打卡图片"""
+        """获取运动打卡图片（支持自动转码为 JPEG）"""
         # 如果是 default，返回 None，由 clockin-worker 处理
         if user.sports_image_type == 'default':
             return None
@@ -111,7 +111,49 @@ class PoetryService:
             url = await PoetryService._fetch_image_url(provider, category)
 
             if url:
-                return {'url': url, 'use_cw': False}
+                print(f"[PoetryService] 原始图片 URL: {url}")
+
+                # 检测是否需要转码
+                needs_conversion = False
+                provider_lower = provider.lower()
+
+                # 这些提供商需要转码
+                if provider_lower in ['loliapi', 'komll', 'cimuapi']:
+                    needs_conversion = True
+                    print(f"[PoetryService] 检测到需要转码的图片源: {provider}")
+                # 或者 URL 中包含问题格式
+                elif any(ext in url.lower() for ext in ['.webp', '.gif', '.png']):
+                    needs_conversion = True
+                    print(f"[PoetryService] 检测到需要转码的图片格式: {url}")
+
+                if needs_conversion:
+                    print(f"[PoetryService] 开始转码图片为 JPEG...")
+                    try:
+                        # 图片转码：统一转换为 JPEG 格式，避免"文件内容与扩展名不匹配"问题
+                        from app.services.image_service import ImageService
+                        converted_url = await ImageService.process_image_url(url, enable_conversion=True)
+                        if converted_url and converted_url.startswith('data:image/jpeg'):
+                            print(f"[PoetryService] ✅ 图片转码成功")
+                            return {
+                                'url': converted_url,
+                                'use_cw': False,
+                                'converted': True,
+                                'original_url': url
+                            }
+                        else:
+                            print(f"[PoetryService] ⚠️  图片转码失败，使用原始 URL")
+                            return {'url': url, 'use_cw': False}
+                    except ImportError as e:
+                        print(f"[PoetryService] ⚠️  缺少 Pillow 库，跳过图片转码: {e}")
+                        print(f"[PoetryService] 💡 安装方法: pip install Pillow")
+                        print(f"[PoetryService] 📌 使用原始 URL（可能会导致图片验证失败）")
+                        return {'url': url, 'use_cw': False}
+                    except Exception as e:
+                        print(f"[PoetryService] ⚠️  图片转码异常: {e}")
+                        return {'url': url, 'use_cw': False}
+                else:
+                    print(f"[PoetryService] 图片已是 JPEG 格式，无需转码")
+                    return {'url': url, 'use_cw': False}
 
         # 标记由 clockin-worker 自行获取
         return {'url': None, 'use_cw': True}

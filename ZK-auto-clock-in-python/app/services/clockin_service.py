@@ -202,6 +202,34 @@ class ClockinService:
 
                     # 重新计算整体成功状态（覆盖外部 API 的 success 字段）
                     details = result.get('results', {})
+
+                    # 详细打印各个打卡类型的结果（用于调试）
+                    for clockin_type, type_result in details.items():
+                        if isinstance(type_result, dict):
+                            success = type_result.get('success', False)
+                            message = type_result.get('message', '')
+                            status = "✓ 成功" if success else "✗ 失败"
+                            logger.info(f"[用户 {user.username}] {clockin_type.upper()} 打卡 {status}: {message}")
+
+                            # 如果是 sports 类型失败，打印更详细的调试信息
+                            if clockin_type == 'sports' and not success:
+                                logger.warning(f"╔══════════════════════════════════════════════════════════════╗")
+                                logger.warning(f"║  🖼️  [图片上传失败] 调试信息                                   ║")
+                                logger.warning(f"╠══════════════════════════════════════════════════════════════╣")
+                                logger.warning(f"║  用户名: {user.username}")
+                                logger.warning(f"║  昵称: {user.nickname or '无'}")
+                                logger.warning(f"║  图片类型: {user.sports_image_type}")
+                                logger.warning(f"║  图片提供商: {user.sports_image_provider}")
+                                if user.sports_image_provider != 'bing':
+                                    logger.warning(f"║  图片分类: {user.sports_image_category}")
+                                if image_data and image_data.get('url'):
+                                    logger.warning(f"║  图片 URL: {image_data['url']}")
+                                    logger.warning(f"║  图片长度: {len(image_data.get('url', ''))} 字符")
+                                else:
+                                    logger.warning(f"║  图片 URL: (无)")
+                                logger.warning(f"║  错误信息: {message}")
+                                logger.warning(f"╚══════════════════════════════════════════════════════════════╝")
+
                     result['success'] = ClockinService._calculate_overall_success(details)
 
                     # 标记成功
