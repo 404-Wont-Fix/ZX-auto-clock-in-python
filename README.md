@@ -1,4 +1,4 @@
-# ZK Auto Clock-in System
+# ZX Auto Clock-in System
 
 <div align="center">
 
@@ -33,11 +33,11 @@
 
 ## 🎯 项目简介
 
-**ZK Auto Clock-in System** 是一个企业级的自动化打卡管理平台，专为需要管理大量用户打卡需求的场景设计。系统采用前后端分离架构，支持高并发、高可用的分布式打卡执行。
+**ZX Auto Clock-in System** 是一个企业级的自动化打卡管理平台，专为需要管理大量用户打卡需求的场景设计。系统采用前后端分离架构，支持高并发、高可用的分布式打卡执行。
 
 本系统包含两个核心组件：
 
-1. **ZK Admin** - 基于 FastAPI 的管理后台（Python）
+1. **ZX Admin** - 基于 FastAPI 的管理后台（Python）
 2. **Clockin Worker** - 基于 Cloudflare Workers 的打卡执行器（JavaScript）
 
 ### 核心亮点
@@ -104,7 +104,7 @@
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                  ZK Admin (FastAPI)                              │
+│                  ZX Admin (FastAPI)                              │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  API Routes (FastAPI + Pydantic)                         │   │
 │  │  - 认证授权 (JWT)                                         │   │
@@ -241,7 +241,7 @@
 
 ## 🛠️ 技术栈
 
-### ZK Admin (Python)
+### ZX Admin (Python)
 
 | 类别                  | 技术选型          | 说明                       |
 | --------------------- | ----------------- | -------------------------- |
@@ -309,12 +309,9 @@ vim .env  # 编辑配置，至少配置 CLOCKIN_API_URL 和 CLOCKIN_API_TOKEN
 # 3. 启动容器
 docker-compose up -d
 
-# 4. 初始化数据库
-docker-compose exec zk-admin python scripts/init_db.py
-
-# 5. 访问应用
+# 4. 访问应用
 # 管理面板: http://localhost:8032/dashboard
-# 默认账号: admin / admin
+# 默认账号: admin / admin（在 .env 中配置）
 ```
 
 **Docker 优势**：一键启动、环境隔离、自动重启、易于维护 🎉
@@ -389,7 +386,7 @@ vim .env  # 或使用其他编辑器
 **必要配置项**：
 
 ```bash
-# 管理员账号（首次登录后请立即修改）
+# 管理员账号（请修改为强密码）
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=your_secure_password
 
@@ -436,7 +433,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 - 用户名：`admin`
 - 密码：`admin`
 
-⚠️ **重要**：首次登录后请立即修改管理员密码！
+⚠️ **重要**：请在部署前修改 .env 文件中的默认密码！
 
 ---
 
@@ -536,18 +533,11 @@ docker-compose logs -f
 docker-compose ps
 ```
 
-#### 4. 初始化数据库
-
-```bash
-# 在容器中执行初始化脚本
-docker-compose exec zk-admin python scripts/init_db.py
-```
-
-#### 5. 访问应用
+#### 4. 访问应用
 
 - **管理面板**: http://localhost:8032/dashboard
 - **API 文档**: http://localhost:8032/docs
-- **默认账号**: admin / admin
+- **默认账号**: admin / admin（在 .env 中配置）
 
 ⚠️ **重要**: 在使用时请修改配置文件中的默认账号密码！！
 
@@ -1344,15 +1334,12 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 **解决方案**：
 
 ```bash
-# 方法1：重置密码
+# 管理员账号和密码存储在 .env 文件中
 vim .env
-# 修改 ADMIN_PASSWORD
-# 重启服务
-sudo systemctl restart zk-clockin
-
-# 方法2：删除 Session
-rm database/zk_admin.db
-python scripts/init_db.py
+# 修改 ADMIN_PASSWORD 为新密码
+# 重启服务使配置生效
+sudo systemctl restart zk-clockin  # 传统部署
+docker-compose restart zk-admin     # Docker 部署
 ```
 
 ---
