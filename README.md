@@ -2,16 +2,6 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-![Python](https://img.shields.io/badge/python-3.11+-green)
-![License](https://img.shields.io/badge/license-MIT-orange)
-
-**一个功能强大的多用户自动打卡管理系统**
-
-[功能特性](#功能特性) • [快速开始](#快速开始) • [Docker部署](#docker-部署推荐) • [开发文档](#开发文档)
-
-</div>
-
 ---
 
 ## 📋 目录
@@ -146,7 +136,7 @@
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      精夏平台 API                                 │
+│                      平台 API                                 │
 │                   (实际打卡目标平台)                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -244,31 +234,31 @@
 
 ### ZX Admin (Python)
 
-| 类别 | 技术选型 | 说明 |
-|------|----------|------|
-| **Web 框架** | FastAPI 0.109 | 高性能异步 Web 框架 |
-| **ASGI 服务器** | Uvicorn | 支持 HTTP/1.1 和 WebSocket |
-| **数据库** | SQLite 3 | 轻量级关系型数据库 |
-| **ORM** | SQLAlchemy 2.0 | Python 最流行的 ORM |
-| **异步驱动** | aiosqlite | SQLAlchemy 异步适配器 |
-| **数据验证** | Pydantic v2 | 数据解析和验证 |
-| **配置管理** | pydantic-settings | 类型安全的配置管理 |
-| **认证授权** | python-jose | JWT Token 生成/验证 |
-| **密码加密** | passlib + bcrypt | 密码哈希和验证 |
-| **HTTP 客户端** | httpx | 现代化的异步 HTTP 客户端 |
-| **定时任务** | APScheduler | Python 定时任务库 |
-| **实时推送** | sse-starlette | Server-Sent Events 支持 |
-| **时区处理** | pytz | 时区转换和处理 |
+| 类别                  | 技术选型          | 说明                       |
+| --------------------- | ----------------- | -------------------------- |
+| **Web 框架**    | FastAPI 0.109     | 高性能异步 Web 框架        |
+| **ASGI 服务器** | Uvicorn           | 支持 HTTP/1.1 和 WebSocket |
+| **数据库**      | SQLite 3          | 轻量级关系型数据库         |
+| **ORM**         | SQLAlchemy 2.0    | Python 最流行的 ORM        |
+| **异步驱动**    | aiosqlite         | SQLAlchemy 异步适配器      |
+| **数据验证**    | Pydantic v2       | 数据解析和验证             |
+| **配置管理**    | pydantic-settings | 类型安全的配置管理         |
+| **认证授权**    | python-jose       | JWT Token 生成/验证        |
+| **密码加密**    | passlib + bcrypt  | 密码哈希和验证             |
+| **HTTP 客户端** | httpx             | 现代化的异步 HTTP 客户端   |
+| **定时任务**    | APScheduler       | Python 定时任务库          |
+| **实时推送**    | sse-starlette     | Server-Sent Events 支持    |
+| **时区处理**    | pytz              | 时区转换和处理             |
 
 ### 前端 (Admin UI)
 
-| 类别 | 技术选型 | 说明 |
-|------|----------|------|
-| **CSS 框架** | Tailwind CSS (CDN) | 原子化 CSS，无需构建 |
-| **组件库** | DaisyUI 4.x | Tailwind 组件插件，内置 light 主题 |
-| **JavaScript** | Vanilla JS | 无框架依赖，单文件 SPA |
-| **布局** | 侧边栏导航 SPA | 5 个视图页面，hash 路由 |
-| **设计风格** | 浅色卡片式 | Linear/Notion 风格，柔和配色 |
+| 类别                 | 技术选型           | 说明                               |
+| -------------------- | ------------------ | ---------------------------------- |
+| **CSS 框架**   | Tailwind CSS (CDN) | 原子化 CSS，无需构建               |
+| **组件库**     | DaisyUI 4.x        | Tailwind 组件插件，内置 light 主题 |
+| **JavaScript** | Vanilla JS         | 无框架依赖，单文件 SPA             |
+| **布局**       | 侧边栏导航 SPA     | 5 个视图页面，hash 路由            |
+| **设计风格**   | 浅色卡片式         | Linear/Notion 风格，柔和配色       |
 
 ### Clockin Worker (JavaScript)
 
@@ -1162,6 +1152,7 @@ class NewModel(Base):
 ```
 
 **5 个视图页面**：
+
 - **概览** (`#/dashboard`): 统计卡片 + 活动任务 + 快速操作 + 今日概况
 - **用户管理** (`#/users`): 搜索/筛选/排序表格 + 右侧抽屉编辑
 - **打卡记录** (`#/records`): 日期范围筛选 + 按日分组 + 3 类型状态指示器
@@ -1169,11 +1160,13 @@ class NewModel(Base):
 - **系统设置** (`#/settings`): 打卡配置 + 定时任务 + 数据管理
 
 **3 个打卡类型指标**（H/S/D）：
+
 - 用户表格每行显示首页/运动/每日 3 个打卡状态
 - 记录详情展示每个类型的执行结果和备注
 - 数据来源：`ClockinResult.details` JSON 字段（`{home, sports, daily}`）
 
 **设计系统**：
+
 - 浅色主题，白色卡片 (`#FFFFFF`)，灰色画布 (`#F8F9FA`)
 - 主色 `#4A90E2`，成功 `#52C41A`，错误 `#FF4D4F`
 - 极轻阴影 (`0 1px 3px rgba(0,0,0,0.04)`)，12px 圆角
@@ -1444,9 +1437,3 @@ docker-compose restart zk-admin     # Docker 部署
 ---
 
 <div align="center">
-
-**如果这个项目对你有帮助，请给个 ⭐️ Star 支持一下！**
-
-Made with ❤️ by [Your Name]
-
-</div>
