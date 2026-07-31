@@ -27,6 +27,35 @@ const logger = {
     }
 };
 
+/**
+ * 常量时间字符串比较，避免 token 校验的计时侧信道
+ */
+function timingSafeTokenMatch(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    if (a.length !== b.length) return false;
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) {
+        diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    }
+    return diff === 0;
+}
+
+/**
+ * 带超时的 Promise 竞速，并在主 promise 先就绪时清理定时器，避免悬挂的 reject
+ * 触发后续重试。
+ */
+async function raceWithTimeout(promise, timeoutMs, timeoutMsg) {
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(timeoutMsg)), timeoutMs);
+    });
+    try {
+        return await Promise.race([promise, timeoutPromise]);
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
 export default {
     async fetch(request, env, ctx) {
         try {
@@ -51,7 +80,16 @@ export default {
             const apiToken = request.headers.get('Authorization')?.replace('Bearer ', '');
             const validToken = env?.API_TOKEN;
 
-            if (!apiToken || apiToken !== validToken) {
+            // 未配置 API_TOKEN 时直接报错，避免部署遗漏 secret 时被误以为"任意 token 都无效"
+            if (!validToken) {
+                logger.error('未配置 API_TOKEN，请通过 wrangler secret put API_TOKEN 设置');
+                return jsonResponse({
+                    success: false,
+                    error: '服务端未配置 API_TOKEN'
+                }, 500);
+            }
+
+            if (!apiToken || !timingSafeTokenMatch(apiToken, validToken)) {
                 return jsonResponse({
                     success: false,
                     error: '未授权：无效的 API Token'
@@ -128,7 +166,7 @@ async function handleClockin(request, env) {
         logger.info(`开始处理用户 ${username} 的 ${clockin_type} 打卡请求`);
 
         // 获取登录 token（带重试和超时控制）
-        const loginResult = await getLoginToken({ username, password }, 3);
+        const loginResult = await getLoginToken({ username, password }, 3, env);
 
         // 检查登录结果
         if (!loginResult || typeof loginResult.json !== 'function') {
@@ -164,25 +202,41 @@ async function handleClockin(request, env) {
             SPORTS_IMAGE_URL: options.sports_image_url || null  // 如果admin-worker提供了图片URL
         };
 
-        // 执行打卡（带超时控制）
-        const results = await Promise.race([
-            performClockIn(accessToken, clockinEnv, clockin_type),
-            new Promise((resolve) =>
-                setTimeout(() => resolve({
-                    home: { success: false, message: '首页签到超时', data: null },
-                    sports: { success: false, message: '运动打卡超时', data: null },
-                    daily: { success: false, message: '日精进打卡超时', data: null }
-                }), 30000)
-            )
-        ]);
+        // 执行打卡（带 30s 外层超时控制；超时后中止后续步骤，并按子结果计算整体成功）
+        const overallTimeoutMs = 30000;
+        const abortController = new AbortController();
+        let timedOut = false;
+        const overallTimeoutId = setTimeout(() => {
+            timedOut = true;
+            abortController.abort();
+            logger.warn(`打卡整体超过 ${overallTimeoutMs}ms，中止后续步骤`);
+        }, overallTimeoutMs);
+
+        let results;
+        try {
+            results = await performClockIn(accessToken, clockinEnv, clockin_type, abortController.signal);
+        } catch (e) {
+            logger.error('打卡执行异常:', e);
+            results = {
+                home: { success: false, message: `打卡异常: ${e.message}`, data: null },
+                sports: { success: false, message: `打卡异常: ${e.message}`, data: null },
+                daily: { success: false, message: `打卡异常: ${e.message}`, data: null }
+            };
+        } finally {
+            clearTimeout(overallTimeoutId);
+        }
+
+        // 整体成功 = 至少一个子任务成功（不再硬编码 success:true）
+        const anySuccess = Object.values(results).some(r => r && r.success);
 
         // 返回结果
         return jsonResponse({
-            success: true,
+            success: anySuccess,
             username,
             clockin_type,
             timestamp: new Date().toISOString(),
-            results
+            results,
+            timed_out: timedOut
         });
 
     } catch (error) {
@@ -196,8 +250,9 @@ async function handleClockin(request, env) {
 
 /**
  * 执行打卡操作（每个步骤带超时控制）
+ * @param signal 可选的外层 AbortSignal，用于在整体超时后中止后续步骤
  */
-async function performClockIn(accessToken, env, clockinType) {
+async function performClockIn(accessToken, env, clockinType, signal) {
     const results = {
         home: { success: false, message: '', data: null },
         sports: { success: false, message: '', data: null },
@@ -205,73 +260,70 @@ async function performClockIn(accessToken, env, clockinType) {
     };
 
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    const aborted = () => signal?.aborted;
 
     try {
         // 首页签到（超时10秒）
         if (clockinType === 'all' || clockinType === 'home') {
-            logger.debug('开始首页签到...');
-            try {
-                results.home = await Promise.race([
-                    clockInHome(accessToken),
-                    new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error('首页签到超时')), 10000)
-                    )
-                ]);
-            } catch (e) {
-                results.home = { success: false, message: `首页签到异常: ${e.message}`, data: null };
-                logger.error('首页签到失败:', e);
-            }
-            if (clockinType === 'all') {
-                logger.debug('首页签到完成，等待2秒后执行运动打卡...');
-                await delay(2000);
+            if (aborted()) {
+                logger.warn('首页签到前已被外层超时中止');
+            } else {
+                logger.debug('开始首页签到...');
+                try {
+                    results.home = await raceWithTimeout(clockInHome(accessToken), 10000, '首页签到超时');
+                } catch (e) {
+                    results.home = { success: false, message: `首页签到异常: ${e.message}`, data: null };
+                    logger.error('首页签到失败:', e);
+                }
+                if (clockinType === 'all' && !aborted()) {
+                    logger.debug('首页签到完成，等待2秒后执行运动打卡...');
+                    await delay(2000);
+                }
             }
         }
 
         // 运动打卡（超时25秒，带重试机制）
-        if (clockinType === 'all' || clockinType === 'sports') {
+        if ((clockinType === 'all' || clockinType === 'sports') && !aborted()) {
             logger.debug('开始运动打卡...');
-            let sportsResult;
-            let retryCount = 0;
-            const maxRetries = 1; // 减少重试次数，避免超时
-
-            while (retryCount <= maxRetries) {
-                try {
-                    sportsResult = await Promise.race([
-                        clockInSports(accessToken, env),
-                        new Promise((_, reject) =>
-                            setTimeout(() => reject(new Error('运动打卡超时')), 25000)
-                        )
-                    ]);
+            // 给定一个默认失败对象，确保 results.sports 永不为 undefined
+            let sportsResult = { success: false, message: '运动打卡未执行', data: null };
+            const maxRetries = 1; // 重试次数（总尝试 = maxRetries + 1）
+            let attempt = 0;
+            // 循环保证终止：成功 -> break；达到最大重试 -> break；被中止 -> break
+            while (true) {
+                if (aborted()) {
+                    sportsResult = { success: false, message: '运动打卡被中止', data: null };
                     break;
+                }
+                try {
+                    sportsResult = await raceWithTimeout(clockInSports(accessToken, env), 25000, '运动打卡超时');
+                    break; // 成功，退出
                 } catch (e) {
-                    if (retryCount < maxRetries) {
-                        logger.warn(`运动打卡失败，${1500}ms 后重试 (${retryCount + 1}/${maxRetries})...`);
+                    if (attempt < maxRetries) {
+                        logger.warn(`运动打卡失败，1500ms 后重试 (${attempt + 1}/${maxRetries})...`);
                         await delay(1500);
-                        retryCount++;
-                    } else {
-                        sportsResult = { success: false, message: `运动打卡异常: ${e.message}`, data: null };
-                        logger.error('运动打卡失败:', e);
+                        attempt++;
+                        continue; // 再次尝试
                     }
+                    // 达到最大重试次数：记录最终失败并退出（必须 break，否则死循环）
+                    sportsResult = { success: false, message: `运动打卡异常: ${e.message}`, data: null };
+                    logger.error('运动打卡失败:', e);
+                    break;
                 }
             }
             results.sports = sportsResult;
 
-            if (clockinType === 'all') {
+            if (clockinType === 'all' && !aborted()) {
                 logger.debug('运动打卡完成，等待2秒后执行日精进打卡...');
                 await delay(2000);
             }
         }
 
         // 日精进打卡（超时8秒）
-        if (clockinType === 'all' || clockinType === 'daily') {
+        if ((clockinType === 'all' || clockinType === 'daily') && !aborted()) {
             logger.debug('开始日精进打卡...');
             try {
-                results.daily = await Promise.race([
-                    clockInDaily(accessToken, env),
-                    new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error('日精进打卡超时')), 8000)
-                    )
-                ]);
+                results.daily = await raceWithTimeout(clockInDaily(accessToken, env), 8000, '日精进打卡超时');
             } catch (e) {
                 results.daily = { success: false, message: `日精进打卡异常: ${e.message}`, data: null };
                 logger.error('日精进打卡失败:', e);

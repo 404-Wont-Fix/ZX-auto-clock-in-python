@@ -71,9 +71,10 @@ class ClockinService:
 
         last_worker_api_id = worker_api.id
         task_success = False
+        task_id = None
 
         # 记录活动任务
-        await ActiveTaskService.start_task(
+        task_id = await ActiveTaskService.start_task(
             user_id=user.id,
             username=user.username,
             nickname=user.nickname or user.username,
@@ -274,7 +275,7 @@ class ClockinService:
             # 避免任务泄漏到活动任务列表中
             try:
                 await ActiveTaskService.complete_task(
-                    user_id=user.id,
+                    task_id=task_id,
                     success=task_success
                 )
             except Exception as e:
@@ -340,7 +341,12 @@ class ClockinService:
         date: str,
         result: ClockinResult
     ):
-        """更新每日汇总（不提交事务，由调用者统一提交）"""
+        """更新每日汇总（不提交事务，由调用者统一提交）
+
+        按用户去重：同一用户同一天多次保存（重试/补签）时，先回滚"最近一次历史"
+        的贡献，再应用本次结果，避免 total_users / success / failure / 分类数被重复计数。
+        failed_users 按用户名去重（成功则移除，失败则替换）。
+        """
         summary = await db.execute(select(DailySummary).where(DailySummary.date == date))
         summary = summary.scalar_one_or_none()
 
@@ -358,31 +364,76 @@ class ClockinService:
             db.add(summary)
             await db.flush()  # 确保对象被持久化
 
-        summary.total_users += 1
+        def _category_success(details_json):
+            """从 details_json 解析各打卡类型是否成功"""
+            cats = {'home': False, 'sports': False, 'daily': False}
+            if not details_json:
+                return cats
+            try:
+                d = json.loads(details_json)
+            except Exception:
+                return cats
+            for k in cats:
+                cats[k] = bool(d.get(k, {}).get('success'))
+            return cats
 
+        # 查询该用户当天是否已有更早的打卡记录（用于去重，避免重试重复计数）
+        prior_q = await db.execute(
+            select(ClockinResult).where(
+                ClockinResult.user_id == result.user_id,
+                ClockinResult.date == date,
+                ClockinResult.id != result.id,
+            ).order_by(ClockinResult.timestamp.desc())
+        )
+        prior_results = prior_q.scalars().all()
+
+        if prior_results:
+            # 重试/补签：回滚最近一次历史的贡献（total_users 已计过，不再重复增加）
+            prior = prior_results[0]  # timestamp 最大者
+            if prior.success:
+                summary.success_count = max(0, summary.success_count - 1)
+            else:
+                summary.failure_count = max(0, summary.failure_count - 1)
+            pc = _category_success(prior.details_json)
+            if pc['home']:
+                summary.home_success = max(0, summary.home_success - 1)
+            if pc['sports']:
+                summary.sports_success = max(0, summary.sports_success - 1)
+            if pc['daily']:
+                summary.daily_success = max(0, summary.daily_success - 1)
+        else:
+            # 首次：计入总人数
+            summary.total_users += 1
+
+        # 应用本次结果
         if result.success:
             summary.success_count += 1
         else:
             summary.failure_count += 1
-            # 添加失败用户
-            failed_users = []
-            if summary.failed_users_json:
+
+        # failed_users 按用户名去重：成功则移除该用户，失败则替换其条目
+        failed_users = []
+        if summary.failed_users_json:
+            try:
                 failed_users = json.loads(summary.failed_users_json)
+            except Exception:
+                failed_users = []
+        failed_users = [f for f in failed_users if f.get('username') != result.username]
+        if not result.success:
             failed_users.append({
                 'username': result.username,
                 'error': result.error or '未知错误'
             })
-            summary.failed_users_json = json.dumps(failed_users, ensure_ascii=False)
+        summary.failed_users_json = json.dumps(failed_users, ensure_ascii=False)
 
-        # 更新分类成功数
-        if result.details_json:
-            details = json.loads(result.details_json)
-            if details.get('home', {}).get('success'):
-                summary.home_success += 1
-            if details.get('sports', {}).get('success'):
-                summary.sports_success += 1
-            if details.get('daily', {}).get('success'):
-                summary.daily_success += 1
+        # 累加本次分类成功数
+        cc = _category_success(result.details_json)
+        if cc['home']:
+            summary.home_success += 1
+        if cc['sports']:
+            summary.sports_success += 1
+        if cc['daily']:
+            summary.daily_success += 1
 
         summary.end_time = datetime.utcnow()
         if not summary.start_time:
@@ -423,7 +474,10 @@ class ClockinService:
                 'failure': len(users)
             }
 
-        max_concurrent = len(available_apis)
+        # 并发度：取配置 parallel_tasks 与可用 API 数的较小值。
+        # 之前写死 = len(available_apis)，导致 PARALLEL_TASKS 配置被忽略；
+        # 同时队列深度受 API 数限制，故不能超过它，否则任务会卡在 api_queue.get()。
+        max_concurrent = min(settings.parallel_tasks, len(available_apis))
         logger.info(f"开始并行处理 {len(users)} 个用户的打卡，最大并发数: {max_concurrent}，可用 API 数量: {max_concurrent}")
 
         # 创建 API 队列（预先分配 API，避免竞态条件）
@@ -515,6 +569,10 @@ class ClockinService:
 
         logger.info(f"并行打卡完成: 成功 {success_count}, 失败 {failure_count}, 耗时: {duration:.2f}秒")
 
+        # 记录每个用户的最终结果（初值取自首轮，重试中会被更新），
+        # 用于最后统计真实成败，避免重试结果被忽略
+        final_outcomes = {r['username']: r.get('success', False) for r in valid_results}
+
         # 自动重试失败的用户的逻辑（手动和定时任务都支持）
         failed_users = []
         for result in valid_results:
@@ -578,6 +636,7 @@ class ClockinService:
                             )
 
                             success = retry_result.get('success', False)
+                            final_outcomes[username] = success  # 更新该用户的最终结果
                             retry_results.append({
                                 'username': username,
                                 'success': success,
@@ -629,9 +688,9 @@ class ClockinService:
                 logger.info(f"║  ✅ 【自动补签结束】所有用户打卡成功                      ║")
                 logger.info(f"╚══════════════════════════════════════════════════════════════╝")
 
-        # 重新统计最终结果（确保计数准确）
-        final_success_count = sum(1 for r in valid_results if r.get('success'))
-        final_failure_count = len(valid_results) - final_success_count
+        # 重新统计最终结果：以每个用户的最终结果为准（含重试后的真实成败）
+        final_success_count = sum(1 for ok in final_outcomes.values() if ok)
+        final_failure_count = len(users) - final_success_count
 
         total_duration = (datetime.now() - start_time).total_seconds()
         logger.info(f"打卡任务全部完成: 成功 {final_success_count}, 失败 {final_failure_count}, 总耗时: {total_duration:.2f}秒")
@@ -659,8 +718,8 @@ class ClockinService:
             user_id: 用户 ID
             triggered_by: 触发方式 (manual/scheduled)
         """
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
+        user_result = await db.execute(select(User).where(User.id == user_id))
+        user = user_result.scalar_one_or_none()
 
         if not user:
             return {'success': False, 'error': '用户不存在'}
@@ -669,19 +728,17 @@ class ClockinService:
             return {'success': False, 'error': '用户未启用'}
 
         try:
+            # 先规整计数（避免把 None 写进历史记录），再调用打卡
+            if user.clockin_count is None:
+                user.clockin_count = 0
+
             # 调用打卡 API
             result = await ClockinService.call_clockin_api(db, user, triggered_by)
 
             # 保存结果
             await ClockinService.save_clockin_result(db, user, result)
 
-            # 重新获取用户对象（确保数据是最新的）
-            user = await UserService.get_user(db, user_id)
-            if user and user.clockin_count is None:
-                user.clockin_count = 0
-                await db.commit()
-
-            # 更新用户信息
+            # 更新用户信息（事务由 update_clockin_info 统一提交）
             await UserService.update_clockin_info(
                 db,
                 user.id,

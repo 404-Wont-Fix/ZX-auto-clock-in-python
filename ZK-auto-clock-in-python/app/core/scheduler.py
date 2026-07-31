@@ -105,7 +105,9 @@ async def cleanup_job():
         from app.models.database import ClockinResult, DailySummary
 
         async with AsyncSessionLocal() as db:
-            cutoff_date = (datetime.now() - timedelta(days=settings.retention_days)).strftime('%Y-%m-%d')
+            # 打卡记录的 date 字段用 UTC 写入（见 save_clockin_result 的 datetime.utcnow），
+            # 因此清理阈值也用 UTC，避免服务器本地时区非 UTC 时按错日子边界删除
+            cutoff_date = (datetime.utcnow() - timedelta(days=settings.retention_days)).strftime('%Y-%m-%d')
 
             # 删除旧的打卡记录
             result = await db.execute(
@@ -136,71 +138,51 @@ async def cleanup_job():
         logger.error(f"清理活动任务失败: {e}")
 
 
-def start_scheduler():
-    """启动调度器"""
+async def start_scheduler():
+    """启动调度器（协程：在已运行的事件循环中读取 DB 配置后启动）。
+
+    重要：必须以 await 调用。此前版本用 asyncio.run() 读取 DB 配置，
+    但在 FastAPI lifespan 中始终处于事件循环里，asyncio.run() 会失败，
+    于是启动时永远读不到 DB 中的 schedule_* 配置（只能用 .env 默认值），
+    导致 /admin 修改的 cron/开关/时区直到重启或手动 reload 才生效。
+    """
     global scheduler
 
     if scheduler is not None:
         logger.warning("调度器已经在运行")
         return
 
-    # 从数据库读取配置（如果数据库已初始化）
+    # 默认使用环境变量配置
     schedule_cron = settings.schedule_cron
     schedule_enabled = settings.schedule_enabled
     schedule_timezone = settings.schedule_timezone
 
+    # 尝试从数据库读取配置（启动时也读取，确保 /admin 改动的 cron/开关/时区即时生效）
     try:
-        # 尝试从数据库读取配置
         from app.core.database import AsyncSessionLocal
         from sqlalchemy import select
         from app.models.database import Config
-        import inspect
 
-        # 检查是否在事件循环中运行
-        try:
-            import asyncio
-            loop = asyncio.get_running_loop()
-            # 如果已经在事件循环中，使用 create_task
-            in_event_loop = True
-        except RuntimeError:
-            # 没有运行的事件循环
-            in_event_loop = False
-
-        # 使用同步方式读取数据库配置
-        async def load_db_config():
-            async with AsyncSessionLocal() as db:
-                result = await db.execute(
-                    select(Config).where(
-                        Config.key.in_(['schedule_cron', 'schedule_enabled', 'schedule_timezone'])
-                    )
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Config).where(
+                    Config.key.in_(['schedule_cron', 'schedule_enabled', 'schedule_timezone'])
                 )
-                configs = result.scalars().all()
-                return {config.key: config.value for config in configs}
+            )
+            configs = {c.key: c.value for c in result.scalars().all()}
 
-        try:
-            if in_event_loop:
-                # 在事件循环中，无法使用 asyncio.run()
-                # 使用同步方式或者接受使用默认值
-                logger.info("检测到运行中的事件循环，将使用环境变量配置（可通过 API 动态修改）")
-            else:
-                # 不在事件循环中，可以使用 asyncio.run()
-                import asyncio
-                db_configs = asyncio.run(load_db_config())
-                if db_configs:
-                    if 'schedule_cron' in db_configs:
-                        schedule_cron = db_configs['schedule_cron']
-                        logger.info(f"从数据库读取 schedule_cron: {schedule_cron}")
-                    if 'schedule_enabled' in db_configs:
-                        schedule_enabled = db_configs['schedule_enabled'].lower() == 'true'
-                        logger.info(f"从数据库读取 schedule_enabled: {schedule_enabled}")
-                    if 'schedule_timezone' in db_configs:
-                        schedule_timezone = db_configs['schedule_timezone']
-                        logger.info(f"从数据库读取 schedule_timezone: {schedule_timezone}")
-        except Exception as e:
-            logger.warning(f"无法从数据库读取配置，使用默认值: {e}")
-
+        if configs:
+            if 'schedule_cron' in configs:
+                schedule_cron = configs['schedule_cron']
+                logger.info(f"从数据库读取 schedule_cron: {schedule_cron}")
+            if 'schedule_enabled' in configs:
+                schedule_enabled = configs['schedule_enabled'].lower() == 'true'
+                logger.info(f"从数据库读取 schedule_enabled: {schedule_enabled}")
+            if 'schedule_timezone' in configs:
+                schedule_timezone = configs['schedule_timezone']
+                logger.info(f"从数据库读取 schedule_timezone: {schedule_timezone}")
     except Exception as e:
-        logger.warning(f"数据库可能尚未初始化，使用环境变量配置: {e}")
+        logger.warning(f"无法从数据库读取调度配置，使用环境变量值: {e}")
 
     # 创建调度器实例，配置时区
     scheduler = AsyncIOScheduler(timezone=schedule_timezone)
@@ -374,7 +356,7 @@ async def get_schedule_info():
 async def scheduler_lifespan():
     """调度器生命周期管理"""
     # 启动调度器
-    start_scheduler()
+    await start_scheduler()
     yield
     # 停止调度器
     stop_scheduler()

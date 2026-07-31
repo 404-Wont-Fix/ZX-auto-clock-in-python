@@ -83,47 +83,55 @@ class ImageService:
 
                 # 3. 使用 PIL 转换图片
                 try:
-                    image = Image.open(io.BytesIO(image_bytes))
-
-                    # 转换为 RGB 模式（处理 RGBA 等格式）
-                    if image.mode in ('RGBA', 'LA', 'P'):
-                        # 创建白色背景
-                        background = Image.new('RGB', image.size, (255, 255, 255))
-                        if image.mode == 'P':
-                            image = image.convert('RGBA')
-                        background.paste(image, mask=image.split()[-1] if image.mode in ('RGBA', 'LA') else None)
-                        image = background
-                    elif image.mode != 'RGB':
-                        image = image.convert('RGB')
-
-                    # 4. 压缩为 JPEG
-                    output_buffer = io.BytesIO()
-                    image.save(output_buffer, format='JPEG', quality=quality, optimize=True)
-                    jpeg_bytes = output_buffer.getvalue()
-                    output_buffer.close()
-
-                    jpeg_size = len(jpeg_bytes)
-                    original_size = len(image_bytes)
-                    compression_ratio = (1 - jpeg_size / original_size) * 100 if original_size > 0 else 0
-
-                    logger.info(f"[ImageService] 转换成功: {original_format} -> JPEG")
-                    logger.info(f"[ImageService] 文件大小: {original_size} -> {jpeg_size} 字节 ({compression_ratio:.1f}% 压缩)")
-
-                    # 5. 转换为 base64（直接嵌入到请求中）
+                    # 解压炸弹防护：解码前按 header 尺寸拒绝超大图片
+                    MAX_PIXELS = 50_000_000  # 约 5000 万像素上限
                     import base64
-                    jpeg_base64 = base64.b64encode(jpeg_bytes).decode('utf-8')
 
-                    # 限制 base64 大小（精夏平台可能有大小限制）
-                    max_size = 2 * 1024 * 1024  # 2MB
-                    if jpeg_size > max_size:
-                        # 如果太大，降低质量重新压缩
-                        logger.warning(f"[ImageService] 图片过大 ({jpeg_size} 字节)，降低质量重新压缩")
+                    with Image.open(io.BytesIO(image_bytes)) as image:
+                        if image.width * image.height > MAX_PIXELS:
+                            logger.warning(f"[ImageService] 图片尺寸过大，拒绝解码: {image.width}x{image.height}")
+                            return {
+                                'success': False,
+                                'error': f'图片尺寸过大: {image.width}x{image.height}'
+                            }
+
+                        # 转换为 RGB 模式（处理 RGBA 等格式）
+                        if image.mode in ('RGBA', 'LA', 'P'):
+                            # 创建白色背景
+                            background = Image.new('RGB', image.size, (255, 255, 255))
+                            if image.mode == 'P':
+                                image = image.convert('RGBA')
+                            background.paste(image, mask=image.split()[-1] if image.mode in ('RGBA', 'LA') else None)
+                            image = background
+                        elif image.mode != 'RGB':
+                            image = image.convert('RGB')
+
+                        # 4. 压缩为 JPEG
                         output_buffer = io.BytesIO()
-                        image.save(output_buffer, format='JPEG', quality=60, optimize=True)
+                        image.save(output_buffer, format='JPEG', quality=quality, optimize=True)
                         jpeg_bytes = output_buffer.getvalue()
-                        jpeg_base64 = base64.b64encode(jpeg_bytes).decode('utf-8')
+
                         jpeg_size = len(jpeg_bytes)
-                        logger.info(f"[ImageService] 重新压缩后: {jpeg_size} 字节")
+                        original_size = len(image_bytes)
+                        compression_ratio = (1 - jpeg_size / original_size) * 100 if original_size > 0 else 0
+
+                        logger.info(f"[ImageService] 转换成功: {original_format} -> JPEG")
+                        logger.info(f"[ImageService] 文件大小: {original_size} -> {jpeg_size} 字节 ({compression_ratio:.1f}% 压缩)")
+
+                        # 5. 转换为 base64（直接嵌入到请求中）
+                        jpeg_base64 = base64.b64encode(jpeg_bytes).decode('utf-8')
+
+                        # 限制 base64 大小（精夏平台可能有大小限制）
+                        max_size = 2 * 1024 * 1024  # 2MB
+                        if jpeg_size > max_size:
+                            # 如果太大，降低质量重新压缩
+                            logger.warning(f"[ImageService] 图片过大 ({jpeg_size} 字节)，降低质量重新压缩")
+                            output_buffer = io.BytesIO()
+                            image.save(output_buffer, format='JPEG', quality=60, optimize=True)
+                            jpeg_bytes = output_buffer.getvalue()
+                            jpeg_base64 = base64.b64encode(jpeg_bytes).decode('utf-8')
+                            jpeg_size = len(jpeg_bytes)
+                            logger.info(f"[ImageService] 重新压缩后: {jpeg_size} 字节")
 
                     return {
                         'success': True,
@@ -139,7 +147,7 @@ class ImageService:
                     logger.error(f"[ImageService] PIL 处理图片失败: {e}")
                     return {
                         'success': False,
-                        'error': f'图片处理失败: {str(e)}'
+                        'error': f'图片处理失败'
                     }
 
         except httpx.HTTPStatusError as e:

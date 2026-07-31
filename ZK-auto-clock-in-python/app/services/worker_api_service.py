@@ -4,7 +4,7 @@ Worker API 服务模块
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 import httpx
 import logging
@@ -21,6 +21,11 @@ class WorkerApiService:
     # 轮询索引和锁
     _round_robin_index = 0
     _round_robin_lock = asyncio.Lock()
+
+    # 被熔断 API 的自动恢复窗口（秒）：距上次失败超过该时长后自动重新可用
+    RECOVERY_SECONDS = 300  # 5 分钟
+    # 连续失败多少次后熔断（与文档"3+ 次连续失败"保持一致）
+    FAILURE_THRESHOLD = 3
 
     @staticmethod
     def _normalize_url(url: str) -> str:
@@ -53,7 +58,27 @@ class WorkerApiService:
 
     @staticmethod
     async def get_available_apis(db: AsyncSession) -> List[WorkerApi]:
-        """获取所有可用的 Worker API（enabled=True 且 available=True）"""
+        """获取所有可用的 Worker API（enabled=True 且 available=True）。
+
+        附带时间恢复：被熔断（available=False）的 API 若距上次失败已超过
+        RECOVERY_SECONDS 秒，会自动重新标记为可用并清零失败计数，避免一次失败
+        就永久下线（原先只能靠一次成功调用才能恢复，而被禁的 API 收不到流量，
+        导致永远无法自愈）。
+        """
+        recovery_cutoff = datetime.utcnow() - timedelta(seconds=WorkerApiService.RECOVERY_SECONDS)
+        recovered = await db.execute(
+            update(WorkerApi)
+            .where(
+                WorkerApi.enabled == True,
+                WorkerApi.available == False,
+                WorkerApi.last_failure < recovery_cutoff,
+            )
+            .values(available=True, failure_count=0)
+        )
+        if recovered.rowcount > 0:
+            await db.commit()
+            logger.info(f"自动恢复了 {recovered.rowcount} 个被熔断的 Worker API（距上次失败超过 {WorkerApiService.RECOVERY_SECONDS} 秒）")
+
         result = await db.execute(
             select(WorkerApi)
             .where(WorkerApi.enabled == True, WorkerApi.available == True)
@@ -275,15 +300,15 @@ class WorkerApiService:
                 )
             )
 
-            # 如果连续失败次数超过阈值，标记为不可用
+            # 如果连续失败次数达到阈值，标记为不可用（5 分钟后会被自动恢复）
             api = await WorkerApiService.get_api_by_id(db, api_id)
-            if api and api.failure_count >= 2:
+            if api and api.failure_count >= WorkerApiService.FAILURE_THRESHOLD:
                 await db.execute(
                     update(WorkerApi)
                     .where(WorkerApi.id == api_id)
                     .values(available=False)
                 )
-                logger.warning(f"Worker API {api.name} 连续失败 {api.failure_count + 1} 次，标记为不可用")
+                logger.warning(f"Worker API {api.name} 连续失败 {api.failure_count} 次，标记为不可用（{WorkerApiService.RECOVERY_SECONDS} 秒后自动恢复）")
 
             await db.commit()
             return True

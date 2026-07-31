@@ -14,13 +14,19 @@ class PoetryService:
     @staticmethod
     def _decode_unicode(text: str) -> str:
         """解码 Unicode 转义序列（如 \u505a\u4efb\u4f55 -> 做任何一件事）"""
-        try:
-            # 使用 json.loads 自动解码 Unicode 转义序列
-            # 将字符串包裹在引号中作为 JSON 解析
-            return json.loads(f'"{text}"')
-        except:
-            # 如果解码失败，返回原文本
+        if not text:
             return text
+
+        # 仅替换 \uXXXX / \UXXXXXXXX 转义序列，其余字符（含字面 " 和 \）原样保留。
+        # 相比旧的"包引号后 json.loads"做法，不会因文本含 " 或 \ 而抛错回退到未解码串。
+        def _repl(m):
+            hexs = m.group(1) or m.group(2)
+            try:
+                return chr(int(hexs, 16))
+            except (ValueError, OverflowError):
+                return m.group(0)
+
+        return re.sub(r'\\(?:u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8}))', _repl, text)
 
     # 匹配 document.write("...") 或 document.write('...')，提取引号内的内容
     _YUANMENG_RE = re.compile(r'document\.write\(\s*["\'](.*)["\']\s*\)\s*;?', re.DOTALL)
