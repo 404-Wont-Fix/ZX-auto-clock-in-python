@@ -1149,7 +1149,10 @@ function editUser(userId) {
     document.getElementById('userId').value = user.id;
     document.getElementById('username').value = user.username;
     document.getElementById('nickname').value = user.nickname || '';
-    document.getElementById('password').value = user.password;
+    // 编辑时不回显密码（接口已不再返回密码）；留空表示保持原密码不变
+    const passwordField = document.getElementById('password');
+    passwordField.value = '';
+    passwordField.placeholder = '留空表示不修改密码';
 
     // 设置运动备注类型
     const sportsType = user.sports_comment_type || 'default';
@@ -1260,11 +1263,11 @@ async function saveUser() {
     const userId = document.getElementById('userId').value;
     const dailyType = document.getElementById('daily_comment_type').value;
     const sportsType = document.getElementById('sports_comment_type').value;
+    const passwordValue = document.getElementById('password').value;
 
     const userData = {
         username: document.getElementById('username').value,
         nickname: document.getElementById('nickname').value,
-        password: document.getElementById('password').value,
         // 运动备注配置
         sports_comment_type: sportsType,
         sports_custom_comment: document.getElementById('sports_custom_comment').value,
@@ -1280,8 +1283,17 @@ async function saveUser() {
         enabled: document.getElementById('enabled').checked
     };
 
-    if (!userData.username || !userData.password) {
-        showToast('请填写用户名和密码', 'error');
+    // 密码：新建用户必填；编辑时留空表示不修改（不发送该字段）
+    if (passwordValue) {
+        userData.password = passwordValue;
+    }
+
+    if (!userData.username) {
+        showToast('请填写用户名', 'error');
+        return;
+    }
+    if (!userId && !userData.password) {
+        showToast('请填写密码', 'error');
         return;
     }
 

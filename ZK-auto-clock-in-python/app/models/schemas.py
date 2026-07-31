@@ -77,11 +77,20 @@ class UserUpdate(BaseModel):
     custom_daily_comment: Optional[str] = Field(None, max_length=500)
     daily_comment_api: Optional[str] = None
 
+    @validator('username')
+    def validate_username(cls, v):
+        """更新时同样校验用户名字符集（与 UserBase 保持一致）"""
+        if v is None:
+            return v
+        import re
+        if not re.match(r'^[一-龥a-zA-Z0-9_]+$', v):
+            raise ValueError('用户名只能包含中文、字母、数字和下划线')
+        return v
+
 
 class UserResponse(UserBase):
-    """用户响应"""
+    """用户响应（不含密码——密码仅供服务端调用 worker 时使用，不回传客户端）"""
     id: str
-    password: str
     created_at: Optional[str] = None
     last_clockin: Optional[str] = None
     clockin_count: int = 0
@@ -206,18 +215,19 @@ class ConfigUpdateRequest(BaseModel):
     clockin_api_url: Optional[str] = None
     clockin_api_token: Optional[str] = None
     default_worker_api_id: Optional[str] = None
-    api_request_delay: Optional[int] = None
-    clockin_type_delay: Optional[int] = None
-    clockin_retry_count: Optional[int] = None
-    clockin_retry_delay: Optional[int] = None
-    clockin_timeout: Optional[int] = None
-    clockin_rate_limit_delay: Optional[int] = None
+    api_request_delay: Optional[int] = Field(None, ge=0)
+    clockin_type_delay: Optional[int] = Field(None, ge=0)
+    clockin_retry_count: Optional[int] = Field(None, ge=0)
+    clockin_retry_delay: Optional[int] = Field(None, ge=0)
+    clockin_timeout: Optional[int] = Field(None, ge=1)
+    clockin_rate_limit_delay: Optional[int] = Field(None, ge=0)
     schedule_cron: Optional[str] = None
     schedule_enabled: Optional[bool] = None
     schedule_timezone: Optional[str] = None
-    schedule_retry_count: Optional[int] = None
-    schedule_retry_delay: Optional[int] = None
-    retention_days: Optional[int] = None
+    schedule_retry_count: Optional[int] = Field(None, ge=0)
+    schedule_retry_delay: Optional[int] = Field(None, ge=0)
+    # 必须 >=1：retention_days=0 会让清理任务把今天之前的记录全删，叠加时区偏差可能误删当天
+    retention_days: Optional[int] = Field(None, ge=1)
 
 
 class ConfigResponse(BaseModel):

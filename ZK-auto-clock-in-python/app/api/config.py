@@ -287,7 +287,7 @@ async def export_config(
         logger.error(f"导出配置失败: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"导出失败: {str(e)}"
+            detail="导出失败，请查看服务端日志"
         )
 
 
@@ -312,9 +312,24 @@ async def import_config(
         updated_users = 0
         imported_worker_apis = 0
 
+        # 配置键白名单：只允许导入已知的配置项，防止导入文件注入任意键
+        # （否则可能覆盖 admin_* 等敏感键或写入脏数据）
+        ALLOWED_CONFIG_KEYS = {
+            'clockin_api_url', 'clockin_api_token', 'default_worker_api_id',
+            'api_request_delay', 'clockin_type_delay',
+            'clockin_retry_count', 'clockin_retry_delay', 'clockin_timeout',
+            'clockin_rate_limit_delay',
+            'schedule_cron', 'schedule_enabled', 'schedule_timezone',
+            'schedule_retry_count', 'schedule_retry_delay',
+            'retention_days',
+        }
+
         # 导入配置
         config_data = import_data.get('config', {})
         for key, value in config_data.items():
+            if key not in ALLOWED_CONFIG_KEYS:
+                logger.warning(f"导入配置：跳过未知键 {key!r}")
+                continue
             # 查找现有配置
             result = await db.execute(select(Config).where(Config.key == key))
             config = result.scalar_one_or_none()
@@ -458,5 +473,5 @@ async def import_config(
         await db.rollback()
         raise HTTPException(
             status_code=500,
-            detail=f"导入失败: {str(e)}"
+            detail="导入失败，请查看服务端日志"
         )

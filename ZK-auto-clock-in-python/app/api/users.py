@@ -46,7 +46,7 @@ async def get_users(
         logger.error(f"获取用户列表失败: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"获取用户列表失败: {str(e)}"
+            detail="获取用户列表失败，请查看服务端日志"
         )
 
 

@@ -11,21 +11,37 @@ function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// 日志开关（与 worker.js 一致，由 env.ENABLE_LOGGING 控制）
+let authEnableLogging = false;
+
 /**
  * 简单日志工具（与worker.js保持一致的日志风格）
  */
 const authLogger = {
-    info: (...args) => console.log(`[AUTH INFO] ${new Date().toISOString()}`, ...args),
-    warn: (...args) => console.warn(`[AUTH WARN] ${new Date().toISOString()}`, ...args),
-    error: (...args) => console.error(`[AUTH ERROR] ${new Date().toISOString()}`, ...args),
-    debug: (...args) => console.log(`[AUTH DEBUG] ${new Date().toISOString()}`, ...args)
+    info: (...args) => { if (authEnableLogging) console.log(`[AUTH INFO] ${new Date().toISOString()}`, ...args); },
+    warn: (...args) => { if (authEnableLogging) console.warn(`[AUTH WARN] ${new Date().toISOString()}`, ...args); },
+    error: (...args) => { if (authEnableLogging) console.error(`[AUTH ERROR] ${new Date().toISOString()}`, ...args); },
+    debug: (...args) => { if (authEnableLogging) console.log(`[AUTH DEBUG] ${new Date().toISOString()}`, ...args); }
 };
 
 /**
  * 获取登录 token（带重试机制）
+ * @param credentials {username, password}
+ * @param maxRetries 最大重试次数
+ * @param env worker 环境变量（用于读取 CLIENT_ID / CLIENT_SECRET / ENABLE_LOGGING）
  */
-export async function getLoginToken(credentials, maxRetries = 3) {
+export async function getLoginToken(credentials, maxRetries = 3, env = {}) {
     const { username, password } = credentials;
+    authEnableLogging = env?.ENABLE_LOGGING === 'true';
+
+    // 上游平台凭据优先从 worker secret 读取，未配置时回退到内置值并告警
+    // 建议通过 `wrangler secret put CLIENT_ID` / `wrangler secret put CLIENT_SECRET` 配置
+    const clientId = env?.CLIENT_ID || '43215cdff2d5407f8af074d2d7e589ee';
+    const clientSecret = env?.CLIENT_SECRET;
+    if (!clientSecret) {
+        authLogger.warn('未配置 CLIENT_SECRET，使用内置回退值；建议通过 wrangler secret put CLIENT_SECRET 配置');
+    }
+    const clientSecretValue = clientSecret || 'DBqEL1YfBmKgT9O491J1YnYoq84lYtB/LwMabAS2JEqa8I+r3z1VrDqymjisqJn3';
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
@@ -71,8 +87,8 @@ export async function getLoginToken(credentials, maxRetries = 3) {
             loginData.append('password', password);
             loginData.append('code', '2341');
             loginData.append('vid', '');
-            loginData.append('client_id', '43215cdff2d5407f8af074d2d7e589ee');
-            loginData.append('client_secret', 'DBqEL1YfBmKgT9O491J1YnYoq84lYtB/LwMabAS2JEqa8I+r3z1VrDqymjisqJn3');
+            loginData.append('client_id', clientId);
+            loginData.append('client_secret', clientSecretValue);
             loginData.append('grant_type', 'password');
             loginData.append('tenant_id', tenantId);
 

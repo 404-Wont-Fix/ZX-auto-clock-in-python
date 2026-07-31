@@ -1,7 +1,7 @@
 """
 认证 API
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Header, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Header, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timedelta
@@ -75,6 +75,7 @@ def record_login_attempt(ip_address: str, success: bool):
 async def login(
     request: LoginRequest,
     http_request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db)
 ):
     """管理员登录"""
@@ -120,6 +121,17 @@ async def login(
     db.add(session)
     await db.commit()
 
+    # 同时通过 httpOnly cookie 下发 token，供 /dashboard 等页面路由做服务端鉴权
+    # （浏览器导航不会带 Authorization 头，但会带 cookie）
+    response.set_cookie(
+        key="admin_session",
+        value=token,
+        max_age=24 * 3600,  # 与 session 过期时间一致（24h）
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+
     return LoginResponse(
         success=True,
         token=token,
@@ -129,6 +141,7 @@ async def login(
 
 @router.post("/logout", response_model=SuccessResponse)
 async def logout(
+    response: Response,
     db: AsyncSession = Depends(get_db),
     authorization: Optional[str] = Header(None)
 ):
@@ -148,6 +161,9 @@ async def logout(
         delete(DBSession).where(DBSession.token == token)
     )
     await db.commit()
+
+    # 清除页面路由鉴权用的 cookie
+    response.delete_cookie(key="admin_session", path="/")
 
     logger.info(f"User logged out, token: {token[:10]}...")
     return SuccessResponse(success=True, message="已登出")

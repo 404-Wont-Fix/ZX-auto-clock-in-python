@@ -8,5 +8,12 @@ preview_urls_setting = "disabled"  # 禁用预览 URL（提高安全性）
 
 [vars]
 ENVIRONMENT = "production"
-API_TOKEN = "35a59c73-461e-499d-8421-3311c289328e"
 ENABLE_LOGGING = "false"  # 生产环境建议关闭日志
+
+# ⚠️ 安全提示：API_TOKEN 是鉴权 worker 的唯一凭据，切勿明文写在 [vars] 里提交到仓库。
+# 请改用 Cloudflare Secret：
+#   wrangler secret put API_TOKEN
+# 设置后即可在 worker 中通过 env.API_TOKEN 读取（与 Python Admin 端 CLOCKIN_API_TOKEN 保持一致）。
+# 同理，上游平台凭据建议设为 secret：
+#   wrangler secret put CLIENT_ID
+#   wrangler secret put CLIENT_SECRET

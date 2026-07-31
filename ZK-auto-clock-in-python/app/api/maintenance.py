@@ -101,6 +101,6 @@ async def backup_database(
         logger.error(f"数据库备份失败: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"备份失败: {str(e)}"
+            detail="备份失败，请查看服务端日志"
         )
 

@@ -45,7 +45,7 @@ async def get_worker_apis(
         logger.error(f"获取 Worker API 列表失败: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"获取 Worker API 列表失败: {str(e)}"
+            detail="获取 Worker API 列表失败，请查看服务端日志"
         )
 
 
@@ -73,7 +73,7 @@ async def create_worker_api(
         logger.error(f"创建 Worker API 失败: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"创建 Worker API 失败: {str(e)}"
+            detail="创建 Worker API 失败，请查看服务端日志"
         )
 
 
@@ -108,7 +108,7 @@ async def update_worker_api(
         logger.error(f"更新 Worker API 失败: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"更新 Worker API 失败: {str(e)}"
+            detail="更新 Worker API 失败，请查看服务端日志"
         )
 
 
@@ -145,7 +145,7 @@ async def delete_worker_api(
         logger.error(f"删除 Worker API 失败: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"删除 Worker API 失败: {str(e)}"
+            detail="删除 Worker API 失败，请查看服务端日志"
         )
 
 
@@ -172,7 +172,7 @@ async def test_worker_api(
         logger.error(f"测试 Worker API 失败: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"测试 Worker API 失败: {str(e)}"
+            detail="测试 Worker API 失败，请查看服务端日志"
         )
 
 
@@ -201,5 +201,5 @@ async def reset_worker_api(
         logger.error(f"重置 Worker API 状态失败: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"重置 Worker API 状态失败: {str(e)}"
+            detail="重置 Worker API 状态失败，请查看服务端日志"
         )

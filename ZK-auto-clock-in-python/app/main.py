@@ -3,14 +3,18 @@ FastAPI 应用主入口
 """
 from fastapi import FastAPI, Request, Depends
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, Response
+from fastapi.responses import HTMLResponse, FileResponse, Response, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from typing import Optional
+from datetime import datetime
 import logging
 
 from app.config import settings
-from app.core.database import init_db, close_db
+from app.core.database import init_db, close_db, AsyncSessionLocal
 from app.core.scheduler import start_scheduler, stop_scheduler
+from sqlalchemy import select
+from app.models.database import Session as DBSession
 
 # 配置日志
 logging.basicConfig(
@@ -41,7 +45,7 @@ async def lifespan(app: FastAPI):
 
     # 启动调度器
     try:
-        start_scheduler()
+        await start_scheduler()
         logger.info("调度器已启动")
     except Exception as e:
         logger.error(f"调度器启动失败: {e}")
@@ -73,13 +77,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# 配置 CORS
+# 配置 CORS（显式限定方法与头部，避免与 allow_credentials=True 叠加时过松）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
@@ -119,9 +123,31 @@ async def admin_login():
         return "<h1>Login not found</h1>"
 
 
+async def _is_valid_page_session(token: Optional[str]) -> bool:
+    """校验页面路由鉴权用的 session token（来自 admin_session cookie）"""
+    if not token:
+        return False
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(DBSession).where(
+                    DBSession.token == token,
+                    DBSession.expires_at > datetime.utcnow()
+                )
+            )
+            return result.scalar_one_or_none() is not None
+    except Exception:
+        logger.exception("校验页面 session 失败")
+        return False
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard():
-    """管理面板（需要认证）"""
+async def dashboard(request: Request):
+    """管理面板（服务端鉴权：校验 admin_session cookie，未登录重定向到登录入口）"""
+    token = request.cookies.get("admin_session")
+    if not await _is_valid_page_session(token):
+        return RedirectResponse(url=f"/{settings.admin_path}", status_code=302)
+
     html_file = "app/ui/pages/index.html"
     try:
         with open(html_file, 'r', encoding='utf-8') as f:

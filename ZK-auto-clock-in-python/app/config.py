@@ -2,8 +2,12 @@
 应用配置管理
 """
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from typing import List
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -11,8 +15,8 @@ class Settings(BaseSettings):
 
     # 应用基础配置
     app_name: str = "ZK Admin"
-    app_env: str = "development"
-    debug: bool = True
+    app_env: str = "development"  # development / production
+    debug: bool = False
     secret_key: str = "change-this-secret-key-in-production"
 
     # 管理员账号
@@ -26,8 +30,10 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///database/zk_admin.db"
 
     # clockin-worker 配置
-    clockin_api_url: str = "https://zk-clockin-executor.xxx.workers.dev"
-    clockin_api_token: str = "35a59c73-461e-499d-8421-3311c289328e"
+    # 注意：真实 token 必须在 .env 中配置，且与 worker 端 API_TOKEN 保持一致；
+    # 不要把真实 token 作为默认值提交到代码库。
+    clockin_api_url: str = ""
+    clockin_api_token: str = ""
 
     # 打卡延迟配置
     api_request_delay: int = 500  # API 请求延迟（毫秒）：获取诗词/图片等外部 API 时的延迟
@@ -65,6 +71,31 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+
+    @model_validator(mode='after')
+    def _validate_security_defaults(self):
+        """生产环境禁止使用默认/空的安全凭据，避免 .env 缺失时以弱凭据裸奔。
+
+        - 开发环境：保持宽松，便于本地快速启动。
+        - 生产环境：必须在 .env 中配置强 SECRET_KEY 与管理员密码；
+          否则启动直接报错（fail-fast），而不是带着默认值上线。
+        """
+        if str(self.app_env).lower() == 'production':
+            if self.secret_key in ('', 'change-this-secret-key-in-production'):
+                raise ValueError(
+                    "生产环境必须在 .env 中设置安全的 SECRET_KEY，"
+                    "禁止使用默认值。"
+                )
+            if self.admin_password in ('', 'admin'):
+                raise ValueError(
+                    "生产环境必须在 .env 中设置强管理员密码（不能为空或 admin）。"
+                )
+            if self.admin_path in ('', 'admin'):
+                logger.warning(
+                    "生产环境 ADMIN_PATH 仍为默认值 'admin'，"
+                    "建议改为自定义路径以增强隐蔽性。"
+                )
+        return self
 
     @property
     def cors_origins_list(self) -> List[str]:

@@ -48,11 +48,10 @@ class User(Base):
     )
 
     def to_dict(self):
-        """转换为字典"""
+        """转换为字典（不含密码——密码仅供服务端调用 worker 时读取，不随接口返回）"""
         return {
             'id': self.id,
             'username': self.username,
-            'password': self.password,  # 添加密码字段
             'nickname': self.nickname or '',
             'enabled': self.enabled,
             'sports_comment_type': self.sports_comment_type,
