@@ -587,8 +587,9 @@ class ClockinService:
             logger.info(f"║  失败用户列表: {', '.join(failed_users)}                              ║")
             logger.info(f"╚══════════════════════════════════════════════════════════════╝")
 
-            # 获取重试配置
-            from app.config import settings
+            # 获取重试配置（settings 已在模块顶部导入，此处不再重复局部导入——
+            # 否则 settings 会被视作函数内局部变量，导致前面 trigger_all_users 里对
+            # settings 的引用触发 UnboundLocalError）
             max_retry_rounds = settings.schedule_retry_count
             retry_delay = settings.schedule_retry_delay
 
