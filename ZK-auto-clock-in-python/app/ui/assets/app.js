@@ -517,7 +517,7 @@ function renderRecordCard(r) {
     const d = r.details || {};
     return `<div class="collapse collapse-arrow ${ok ? 'border-l-3 border-l-success' : 'border-l-3 border-l-error'} bg-surface border border-subtle/50 mb-2 rounded-xl" style="border-left-width:3px">
         <input type="checkbox" class="peer">
-        <div class="collapse-title flex items-center justify-between py-3 px-4 min-h-0">
+        <div class="collapse-title flex items-center justify-between py-3 pl-4 pr-12 min-h-0">
             <div class="flex items-center gap-3 flex-1 min-w-0">
                 <span class="font-semibold text-sm truncate">${esc(r.username)}</span>
                 ${r.nickname ? `<span class="text-xs text-muted truncate">(${esc(r.nickname)})</span>` : ''}

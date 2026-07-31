@@ -160,7 +160,7 @@ When triggering clockin for users:
    - Cleans up active task on completion
 
 4. **ClockinService.save_clockin_result()** - Persists to database
-   - Creates ClockinResult record
+   - Creates ClockinResult record with `details_json` containing per-type results (`{home, sports, daily}`)
    - Updates DailySummary aggregate
 
 5. **UserService.update_clockin_info()** - Updates user's last_clockin and count
@@ -170,13 +170,14 @@ When triggering clockin for users:
 The system supports multiple Worker APIs for load balancing and redundancy:
 
 - **Round-robin selection**: APIs are selected in rotation using thread-safe lock
-- **Health tracking**: Each API tracks request count, success count, and failure count
-- **Auto-skipping**: Unhealthy APIs (low success rate or recent failures) are automatically skipped
-- **Admin interface**: Add/remove/manage APIs via `/admin` page → Worker API 管理
+- **Health tracking**: Each API tracks `total_requests`, `total_success`, `total_failure`, `failure_count`
+- **Availability field**: Backend sets `available` boolean based on success rate and consecutive failures — **do not re-derive health from frontend rate calculations**
+- **Auto-skipping**: Unavailable APIs (`available=false`) are automatically skipped
+- **Admin interface**: Add/remove/manage APIs via sidebar → "Worker API" page
 - **Statistics**: View success rates and request counts for each API
 
 **Configuration**:
-- Health threshold: APIs with < 50% success rate or 3+ consecutive failures are marked unhealthy
+- Health threshold: APIs with < 50% success rate or 3+ consecutive failures are marked unavailable
 - Recovery: Failed APIs recover after 5 minutes of no failures
 
 **Important**: Always maintain at least 2 healthy Worker APIs for redundancy.
@@ -191,7 +192,7 @@ Two scheduled jobs run via APScheduler:
 
 The `ActiveTaskService` (singleton pattern) tracks all currently executing clockin tasks:
 
-- **Real-time monitoring**: View active tasks on `/dashboard` → "活动任务" section
+- **Real-time monitoring**: View active tasks on "概览" page with live pulse indicator and top bar badge
 - **Task lifecycle**: Tasks are registered when started, cleaned up when completed/failed
 - **Per-task details**: Includes user info, Worker API used, start time, elapsed time
 - **API endpoint**: `GET /api/clockin/active-tasks` returns current active tasks
@@ -213,6 +214,32 @@ This prevents duplicate processing and provides visibility into system state.
 - Use `generate_uuid()` for primary keys (string UUIDs)
 - Include `to_dict()` method for JSON serialization
 - Index commonly queried fields (enabled, date, username)
+
+### ClockinResult Data Structure
+
+The `ClockinResult.to_dict()` returns:
+- `details` — parsed from `details_json`, contains per-type results:
+  ```json
+  {
+    "home": {"success": true, ...},
+    "sports": {"success": true, ...},
+    "daily": {"success": false, ...}
+  }
+  ```
+- `sports_comment`, `daily_comment` — direct string fields
+- `sports_comment_api`, `daily_comment_api` — API provider codes (e.g. `poetry_all`, `hitokoto_all`)
+
+**Important**: Frontend must use `r.details` (not `r.results`) to access per-type clockin status.
+
+### WorkerApi Data Structure
+
+The `WorkerApi.to_dict()` returns:
+- `available` (boolean) — whether the API is healthy; **use this field for health display**
+- `total_requests`, `total_success`, `total_failure` — lifetime counters
+- `failure_count` — consecutive failure count
+- `enabled` — whether the API is enabled by admin
+
+**Important**: Do not re-derive health from `total_success / total_requests` — use the `available` field.
 
 ### Error Handling
 - Services return `{'success': bool, 'error': str}` dicts
@@ -243,13 +270,76 @@ This prevents duplicate processing and provides visibility into system state.
 | Logs | `ZK-auto-clock-in-python/logs/*.log` |
 | Environment | `ZK-auto-clock-in-python/.env` |
 
-## Frontend Integration
+## Frontend Architecture
 
-- UI is vanilla HTML/JS in `app/ui/pages/`
-- Static assets served from `/assets` route
-- No API prefix for page routes (`/dashboard`, `/admin`)
-- API routes use `/api/*` prefix
-- Token stored in localStorage, sent in `Authorization: Bearer` header
+### Tech Stack
+
+- **CSS Framework**: Tailwind CSS (CDN) + DaisyUI 4.x component library
+- **Theme**: DaisyUI `light` theme with custom color overrides
+- **JavaScript**: Vanilla JS, no framework — single `app.js` file
+- **No build step**: All dependencies loaded via CDN
+
+### Design System
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `primary` | `#4A90E2` | Brand color, buttons, links |
+| `success` | `#52C41A` | Enabled, success indicators |
+| `error` | `#FF4D4F` | Failure, delete actions |
+| `base-100` | `#FFFFFF` | Card surfaces |
+| `base-200` | `#F8F9FA` | Page canvas, input backgrounds |
+| `base-300` | `#F0F1F3` | Borders, dividers |
+| `neutral` | `#333333` | Primary text |
+| Muted text | `#999999` | Secondary text |
+| Shadows | `0 1px 3px rgba(0,0,0,0.04)` | Card elevation |
+
+### UI Layout (SPA with Sidebar Navigation)
+
+The admin panel is a single-page application with 5 views:
+
+```
+┌──────────────────────────────────────────────┐
+│  侧边栏 (220px)  │  顶部栏 (标题 + 活动任务) │
+│                   │                           │
+│  ⚡ 打卡系统       │  主内容区（按路由切换）    │
+│                   │                           │
+│  📊 概览           │                           │
+│  👥 用户管理       │                           │
+│  📋 打卡记录       │                           │
+│  🔗 Worker API    │                           │
+│  ⚙ 系统设置       │                           │
+│                   │                           │
+│  🚪 退出登录       │  底部状态栏               │
+└───────────────────┴───────────────────────────┘
+```
+
+- **Hash routing**: `#/dashboard`, `#/users`, `#/records`, `#/apis`, `#/settings`
+- **Sidebar**: Collapsible on desktop (icon-only mode), slide-over on mobile
+- **Drawers**: Right-side slide-in panels for user/API forms (not center modals)
+- **DaisyUI components**: `card`, `table`, `badge`, `toggle`, `collapse`, `progress`, `select`, `input`
+
+### Frontend Files
+
+| File | Purpose |
+|------|---------|
+| `app/ui/pages/index.html` | Main SPA page (sidebar + 5 sections + drawer panels) |
+| `app/ui/pages/login.html` | Login page |
+| `app/ui/pages/404.html` | Nginx decoy page |
+| `app/ui/assets/app.js` | All SPA logic (routing, data loading, rendering) |
+| `app/ui/assets/styles.css` | Custom styles supplementing Tailwind/DaisyUI |
+| `app/ui/assets/login.css` | Login page styles |
+| `app/ui/assets/login.js` | Login form logic |
+| `app/ui/html.js` | JS module exporting HTML pages (not used by Python backend) |
+
+### Key Frontend Patterns
+
+- **API calls**: All go through `apiRequest()` which attaches Bearer token and handles 401
+- **Data rendering**: `renderUserTable()`, `renderRecords()`, `renderWorkerApis()` generate HTML via template literals
+- **3 clockin type indicators**: Each record and user row shows H(ome)/S(port)/D(aily) status
+  - Data source: `r.details.home?.success`, `r.details.sports?.success`, `r.details.daily?.success`
+- **Active task polling**: `loadActiveTasks()` runs every 3 seconds via `setInterval`
+- **Status bar**: Updates every 30 seconds with next scheduled run and Worker health count
+- **Backend injection**: Python replaces `</head>` to inject `window.ADMIN_PATH` script
 
 ### Security Feature: ADMIN_PATH
 
@@ -271,23 +361,16 @@ When modifying clockin behavior:
 ### Comment and Image Content
 
 **Comment Sources** (configured per user):
-- `tangshi`: Tang poetry (唐诗)
-- `songci`: Song lyrics (宋词)
-- `shijing`: Book of Songs (诗经)
-- `custom`: Custom comment API
+- `default`: System default text
+- `custom`: User-provided custom text
+- `api`: External API (今日诗词, 一言, 远梦API, KLapi)
 
 **Image Providers** (configured per user):
-- `bing`: Bing Daily Images
-- `bing_uhd`: Bing UHD高清壁纸 (high quality)
-- `unsplash`: Unsplash random photos
-- `pexels`: Pexels stock photos
-- `custom`: Custom image API
-
-**Image Categories** (for Unsplash/Pexels):
-- `nature`: Nature/scenery
-- `sports`: Sports/fitness
-- `animals`: Animals/wildlife
-- `travel`: Travel/places
+- `bing`: Bing Daily Images (default)
+- `bing_uhd`: Bing UHD高清壁纸
+- `komll`: Komll API
+- `loliapi`: LoliAPI ACG
+- `cimuapi`: 次元API (supports category filtering)
 
 When adding new API endpoints:
 1. Create Pydantic schemas in `models/schemas.py`
@@ -318,7 +401,7 @@ cd clockin-worker
 npx wrangler deploy
 ```
 
-**Multiple Workers**: Deploy multiple workers with different names for load balancing. Add each worker's URL and token via `/admin` → Worker API 管理.
+**Multiple Workers**: Deploy multiple workers with different names for load balancing. Add each worker's URL and token via sidebar → "Worker API" page.
 
 ## Troubleshooting
 
@@ -364,13 +447,13 @@ pip install -r requirements.txt
 ### Clockin Issues
 
 **All clockins failing with "没有可用的 Worker API"**:
-- Check that at least one Worker API is enabled in `/admin` → Worker API 管理
+- Check that at least one Worker API is enabled in sidebar → "Worker API" page
 - Verify Worker API URLs are accessible: `curl https://your-worker.workers.dev`
 - Check Worker API tokens match between Python Admin and Cloudflare Worker
 
 **High failure rate on specific Worker API**:
-- Check API health in `/admin` → Worker API 管理
-- Consider disabling unhealthy APIs temporarily
+- Check API availability in sidebar → "Worker API" page
+- Consider disabling unavailable APIs temporarily
 - Deploy additional Worker APIs for redundancy
 
 **Rate limiting errors (429)**:
@@ -380,10 +463,21 @@ pip install -r requirements.txt
 
 ### Task Tracking Issues
 
-**Stale tasks showing in "活动任务"**:
+**Stale tasks showing in 概览页**:
 - Tasks auto-cleanup after completion
 - If tasks persist, restart the application
 - Check logs for errors in `ActiveTaskService`
+
+### Frontend Issues
+
+**JavaScript functions undefined (e.g. `navigateTo is not defined`)**:
+- Check `app.js` for syntax errors: `node -c app/ui/assets/app.js`
+- Template literal nesting issues can break the entire file
+- Verify version parameter matches: `app.js?v=X.X` in `index.html`
+
+**Worker API always shows "不可用"**:
+- Frontend uses `api.available` field from backend (not rate calculation)
+- Check `WorkerApiService` health logic for threshold settings
 
 ## Environment Variables Reference
 

@@ -185,34 +185,35 @@
 #### 3. Worker API 管理
 
 - ✅ 多 API 负载均衡（Round-robin）
-- ✅ 健康状态监控（成功率、连续失败次数）
-- ✅ 自动故障转移（跳过不健康的 API）
-- ✅ 统计数据展示（请求量、成功率）
+- ✅ 可用状态监控（`available` 字段，综合成功率和连续失败次数）
+- ✅ 自动故障转移（跳过不可用的 API）
+- ✅ 统计数据展示（总请求、成功数、成功率进度条）
 - ✅ 动态添加/删除/启用/禁用 API
 
 #### 4. 实时任务监控
 
-- ✅ SSE 实时推送打卡进度
-- ✅ 活动任务列表（当前执行中的任务）
-- ✅ 任务状态追踪（运行中/成功/失败）
-- ✅ 耗时统计和性能分析
+- ✅ 概览页实时活动任务展示（3 秒轮询）
+- ✅ 顶部栏活动任务徽标（快速感知执行状态）
+- ✅ 活动任务列表（用户、Worker API、耗时）
+- ✅ 底部状态栏（下次打卡时间、Worker 健康数）
 
 #### 5. 内容服务集成
 
 **评论内容源**：
 
-- 📖 唐诗三百首（`tangshi`）
-- 🎵 宋词精选（`songci`）
-- 📚 诗经名篇（`shijing`）
-- 🔗 自定义 API（`custom`）
+- 📖 今日诗词（`jinrishici`，支持多种诗词分类）
+- 💬 一言（`hitokoto`）
+- 🌙 远梦API（`yuanmeng`）
+- 🔗 KLapi（`klapi`）
+- ✏️ 自定义内容（`custom`）
 
 **图片内容源**：
 
-- 🖼️ Bing 每日图片（`bing`）
+- 🖼️ Bing 每日图片（`bing`，默认）
 - 🌟 Bing UHD 高清壁纸（`bing_uhd`）
-- 📷 Unsplash 随机图片（`unsplash`）
-- 🎨 Pexels 素材库（`pexels`）
-- 🔗 自定义 API（`custom`）
+- 🎮 Komll API（`komll`）
+- 🎨 LoliAPI ACG（`loliapi`）
+- 🖌️ 次元API（`cimuapi`，支持分类筛选）
 
 #### 6. 数据统计与报表
 
@@ -243,21 +244,31 @@
 
 ### ZX Admin (Python)
 
-| 类别                  | 技术选型          | 说明                       |
-| --------------------- | ----------------- | -------------------------- |
-| **Web 框架**    | FastAPI 0.109     | 高性能异步 Web 框架        |
-| **ASGI 服务器** | Uvicorn           | 支持 HTTP/1.1 和 WebSocket |
-| **数据库**      | SQLite 3          | 轻量级关系型数据库         |
-| **ORM**         | SQLAlchemy 2.0    | Python 最流行的 ORM        |
-| **异步驱动**    | aiosqlite         | SQLAlchemy 异步适配器      |
-| **数据验证**    | Pydantic v2       | 数据解析和验证             |
-| **配置管理**    | pydantic-settings | 类型安全的配置管理         |
-| **认证授权**    | python-jose       | JWT Token 生成/验证        |
-| **密码加密**    | passlib + bcrypt  | 密码哈希和验证             |
-| **HTTP 客户端** | httpx             | 现代化的异步 HTTP 客户端   |
-| **定时任务**    | APScheduler       | Python 定时任务库          |
-| **实时推送**    | sse-starlette     | Server-Sent Events 支持    |
-| **时区处理**    | pytz              | 时区转换和处理             |
+| 类别 | 技术选型 | 说明 |
+|------|----------|------|
+| **Web 框架** | FastAPI 0.109 | 高性能异步 Web 框架 |
+| **ASGI 服务器** | Uvicorn | 支持 HTTP/1.1 和 WebSocket |
+| **数据库** | SQLite 3 | 轻量级关系型数据库 |
+| **ORM** | SQLAlchemy 2.0 | Python 最流行的 ORM |
+| **异步驱动** | aiosqlite | SQLAlchemy 异步适配器 |
+| **数据验证** | Pydantic v2 | 数据解析和验证 |
+| **配置管理** | pydantic-settings | 类型安全的配置管理 |
+| **认证授权** | python-jose | JWT Token 生成/验证 |
+| **密码加密** | passlib + bcrypt | 密码哈希和验证 |
+| **HTTP 客户端** | httpx | 现代化的异步 HTTP 客户端 |
+| **定时任务** | APScheduler | Python 定时任务库 |
+| **实时推送** | sse-starlette | Server-Sent Events 支持 |
+| **时区处理** | pytz | 时区转换和处理 |
+
+### 前端 (Admin UI)
+
+| 类别 | 技术选型 | 说明 |
+|------|----------|------|
+| **CSS 框架** | Tailwind CSS (CDN) | 原子化 CSS，无需构建 |
+| **组件库** | DaisyUI 4.x | Tailwind 组件插件，内置 light 主题 |
+| **JavaScript** | Vanilla JS | 无框架依赖，单文件 SPA |
+| **布局** | 侧边栏导航 SPA | 5 个视图页面，hash 路由 |
+| **设计风格** | 浅色卡片式 | Linear/Notion 风格，柔和配色 |
 
 ### Clockin Worker (JavaScript)
 
@@ -933,13 +944,13 @@ sudo certbot renew --dry-run
 登录管理后台，添加 Worker API：
 
 1. 访问 `https://your-domain.com/admin`
-2. 点击 "Worker API 管理"
-3. 点击 "添加 Worker API"
+2. 登录后点击左侧侧边栏 "Worker API"
+3. 点击右上角 "+ 添加 API"
 4. 填写信息：
    - **名称**: `Worker 01`
    - **URL**: `https://zk-clockin-executor-01.your-subdomain.workers.dev`
    - **Token**: `your-secure-token`
-5. 点击 "保存"
+5. 点击 "保存配置"
 
 重复以上步骤添加多个 Worker API。
 
@@ -984,9 +995,17 @@ ZK-auto-clock-in-python/
 │   │   │   ├── database.py           # 数据库连接
 │   │   │   ├── security.py           # 安全工具
 │   │   │   └── scheduler.py          # 定时任务
-│   │   ├── ui/                        # 前端界面
+│   │   ├── ui/                        # 前端界面 (Tailwind + DaisyUI)
 │   │   │   ├── pages/                # HTML 页面
-│   │   │   └── assets/               # 静态资源
+│   │   │   │   ├── index.html        # 主 SPA（侧边栏 + 5 个视图）
+│   │   │   │   ├── login.html        # 登录页
+│   │   │   │   └── 404.html          # Nginx 伪装页
+│   │   │   ├── assets/               # 静态资源
+│   │   │   │   ├── app.js            # SPA 逻辑（路由、数据、渲染）
+│   │   │   │   ├── styles.css        # 自定义样式补充
+│   │   │   │   ├── login.css         # 登录页样式
+│   │   │   │   └── login.js          # 登录逻辑
+│   │   │   └── html.js               # HTML 导出模块（未使用）
 │   │   ├── config.py                  # 配置管理
 │   │   └── main.py                    # 应用入口
 │   ├── database/                      # 数据库文件
@@ -1122,13 +1141,50 @@ class NewModel(Base):
         }
 ```
 
+### 前端架构
+
+管理面板采用 **侧边栏导航 SPA** 设计，基于 **Tailwind CSS + DaisyUI** 组件库：
+
+```
+┌─────────────────────────────────────────────────┐
+│  侧边栏 (220px)  │  顶部栏 (标题 + 任务徽标)   │
+│                   │                             │
+│  ⚡ 打卡系统       │  主内容区 (hash 路由切换)   │
+│                   │                             │
+│  📊 概览           │  ┌─────┬─────┬─────┬─────┐ │
+│  👥 用户管理       │  │统计 │统计 │统计 │统计 │ │
+│  📋 打卡记录       │  └─────┴─────┴─────┴─────┘ │
+│  🔗 Worker API    │  快速操作卡片               │
+│  ⚙ 系统设置       │  今日打卡概况               │
+│                   │                             │
+│  🚪 退出           │  底部状态栏                 │
+└───────────────────┴─────────────────────────────┘
+```
+
+**5 个视图页面**：
+- **概览** (`#/dashboard`): 统计卡片 + 活动任务 + 快速操作 + 今日概况
+- **用户管理** (`#/users`): 搜索/筛选/排序表格 + 右侧抽屉编辑
+- **打卡记录** (`#/records`): 日期范围筛选 + 按日分组 + 3 类型状态指示器
+- **Worker API** (`#/apis`): 卡片网格 + 健康状态 + 成功率进度条
+- **系统设置** (`#/settings`): 打卡配置 + 定时任务 + 数据管理
+
+**3 个打卡类型指标**（H/S/D）：
+- 用户表格每行显示首页/运动/每日 3 个打卡状态
+- 记录详情展示每个类型的执行结果和备注
+- 数据来源：`ClockinResult.details` JSON 字段（`{home, sports, daily}`）
+
+**设计系统**：
+- 浅色主题，白色卡片 (`#FFFFFF`)，灰色画布 (`#F8F9FA`)
+- 主色 `#4A90E2`，成功 `#52C41A`，错误 `#FF4D4F`
+- 极轻阴影 (`0 1px 3px rgba(0,0,0,0.04)`)，12px 圆角
+
 ### 调试技巧
 
 1. **启用调试日志**：在 `.env` 中设置 `DEBUG=true` 和 `LOG_LEVEL=DEBUG`
 2. **查看 SQL 语句**：临时修改 `main.py` 中的日志级别
 3. **测试单个 API**：使用 Swagger 文档 (`/docs`) 或 `curl`
 4. **查看活动任务**：访问 `/api/clockin/active-tasks`
-5. **监控 Worker 健康**：访问 `/admin` → Worker API 管理
+5. **监控 Worker 健康**：侧边栏 → "Worker API" 查看各节点状态
 
 ### 代码规范
 
@@ -1293,7 +1349,7 @@ taskkill /PID <PID> /F
 
 **解决方案**：
 
-1. 检查 `/admin` → Worker API 管理，确保至少有一个 API 已启用
+1. 检查侧边栏 → "Worker API"，确保至少有一个 API 已启用
 2. 测试 Worker URL：`curl https://your-worker.workers.dev`
 3. 检查 Worker Token 是否正确
 4. 查看 Worker 日志：`wrangler tail`
