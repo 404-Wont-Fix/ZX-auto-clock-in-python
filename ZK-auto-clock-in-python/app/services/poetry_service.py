@@ -3,6 +3,7 @@
 """
 import httpx
 import json
+import re
 from typing import Optional, Dict
 from app.models.database import User
 
@@ -21,13 +22,53 @@ class PoetryService:
             # 如果解码失败，返回原文本
             return text
 
+    # 匹配 document.write("...") 或 document.write('...')，提取引号内的内容
+    _YUANMENG_RE = re.compile(r'document\.write\(\s*["\'](.*)["\']\s*\)\s*;?', re.DOTALL)
+
+    @staticmethod
+    def _parse_yuanmeng(text: str) -> Optional[str]:
+        """
+        解析远梦API返回的 document.write("...") 格式。
+
+        例如：document.write("富士山终究留不住遗落的樱花。");
+        会剥掉前后的 document.write("") / ; 包装，只保留引号内的句子，
+        并自动解码其中的 Unicode 转义序列。
+
+        兜底：若响应恰好是 JSON（部分子接口），也尝试取 quote/msg/hitokoto 字段。
+        """
+        if not text:
+            return None
+
+        text = text.strip()
+
+        # 1) document.write("...") 格式 —— 当前主格式
+        match = PoetryService._YUANMENG_RE.search(text)
+        if match:
+            raw = match.group(1)
+            # 解码可能的 Unicode 转义，并去除首尾空白
+            result = PoetryService._decode_unicode(raw).strip()
+            return result or None
+
+        # 2) 兜底：极少数子接口可能仍返回 JSON
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict):
+                value = data.get('quote') or data.get('msg') or data.get('hitokoto')
+                if value:
+                    return PoetryService._decode_unicode(value).strip() or None
+        except Exception:
+            pass
+
+        print(f"[PoetryService] yuanmeng 无法识别的响应格式，前100字符: {text[:100]}")
+        return None
+
     # 诗词 API 配置（与原JS项目保持一致）
     POETRY_APIS = {
         'poetry_all': 'https://v1.jinrishici.com/all.json',
         'hitokoto': 'https://v1.hitokoto.cn/',
         # 'cenguigui': 'https://api-v2.cenguigui.cn/api/yiyan/?code=json',  # API 已失效，暂时注释
-        'yuanmeng': 'https://api.mmp.cc/api/yiyan?format=json',
-        'klapi': 'https://www.klapi.cn/api/yiyan.php?type=json',
+        '远梦API': 'https://api.qzqi.com/api/v1/Yiyan',
+        # 'klapi': 'https://www.klapi.cn/api/yiyan.php?type=json',  # API 已失效，暂时注释
     }
 
     # 图片 API 配置（与原JS项目保持一致）
@@ -188,6 +229,14 @@ class PoetryService:
             async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
                 response = await client.get(request_url)
                 response.raise_for_status()
+
+                # 远梦API 返回 document.write("...") 格式的 JS 文本，不是 JSON，
+                # 必须先于 response.json() 处理，否则会抛出 JSONDecodeError
+                if actual_api_type == 'yuanmeng':
+                    result = PoetryService._parse_yuanmeng(response.text)
+                    print(f"[PoetryService] yuanmeng 返回: {result[:30] if result else 'None'}...")
+                    return result
+
                 data = response.json()
 
                 # 根据不同 API 解析
@@ -212,16 +261,6 @@ class PoetryService:
                         print(f"[PoetryService] cenguigui 返回: {result[:30]}...")
                         return result
                     print(f"[PoetryService] cenguigui 返回错误: code={data.get('code')}")
-                    return None
-
-                elif actual_api_type == 'yuanmeng':
-                    # 返回 quote 字段，需要解码Unicode
-                    text = data.get('quote')
-                    if text:
-                        result = PoetryService._decode_unicode(text)
-                        print(f"[PoetryService] yuanmeng 返回: {result[:30]}...")
-                        return result
-                    print(f"[PoetryService] yuanmeng 未找到 quote 字段")
                     return None
 
                 elif actual_api_type == 'klapi':
