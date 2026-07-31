@@ -136,7 +136,7 @@
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      平台 API                                 │
+│                      足下平台 API                                 │
 │                   (实际打卡目标平台)                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -1432,7 +1432,6 @@ docker-compose restart zk-admin     # Docker 部署
 ## 📞 联系方式
 
 - **Issues**: [GitHub Issues](https://github.com/yourusername/ZK-auto-clock-in-python/issues)
-- **Email**: your-email@example.com
 
 ---
 
