@@ -4,8 +4,11 @@
 import httpx
 import json
 import re
+import logging
 from typing import Optional, Dict
 from app.models.database import User
+
+logger = logging.getLogger(__name__)
 
 
 class PoetryService:
@@ -65,7 +68,7 @@ class PoetryService:
         except Exception:
             pass
 
-        print(f"[PoetryService] yuanmeng 无法识别的响应格式，前100字符: {text[:100]}")
+        logger.warning(f"yuanmeng 无法识别的响应格式，前100字符: {text[:100]}")
         return None
 
     # 诗词 API 配置（与原JS项目保持一致）
@@ -115,12 +118,12 @@ class PoetryService:
 
         if user.daily_comment_type == 'api':
             api_type = user.daily_comment_api or 'poetry_all'  # 默认使用 poetry_all
-            print(f"[PoetryService] 用户 {user.username} 配置的每日诗词API: {api_type} (原始值: {user.daily_comment_api})")
+            logger.info(f"用户 {user.username} 配置的每日诗词API: {api_type} (原始值: {user.daily_comment_api})")
             comment = await PoetryService._fetch_poetry(api_type)
             if comment:
-                print(f"[PoetryService] 每日诗词API返回内容: {comment[:50]}...")
+                logger.info(f"每日诗词API返回内容: {comment[:50]}...")
             else:
-                print(f"[PoetryService] 每日诗词API返回为空，使用默认值")
+                logger.warning(f"每日诗词API返回为空，使用默认值")
             return comment or "今日学习内容总结，收获满满！"
 
         return "今日学习内容总结，收获满满！"
@@ -134,12 +137,12 @@ class PoetryService:
 
         if user.sports_comment_type == 'api':
             api_type = user.sports_comment_api or 'poetry_all'  # 默认使用 poetry_all
-            print(f"[PoetryService] 用户 {user.username} 配置的诗词API: {api_type} (原始值: {user.sports_comment_api})")
+            logger.info(f"用户 {user.username} 配置的诗词API: {api_type} (原始值: {user.sports_comment_api})")
             comment = await PoetryService._fetch_poetry(api_type)
             if comment:
-                print(f"[PoetryService] 诗词API返回内容: {comment[:50]}...")
+                logger.info(f"诗词API返回内容: {comment[:50]}...")
             else:
-                print(f"[PoetryService] 诗词API返回为空，使用默认值")
+                logger.warning(f"诗词API返回为空，使用默认值")
             return comment or "已运动！"
 
         return "已运动！"
@@ -158,7 +161,7 @@ class PoetryService:
             url = await PoetryService._fetch_image_url(provider, category)
 
             if url:
-                print(f"[PoetryService] 原始图片 URL: {url}")
+                logger.info(f"原始图片 URL: {url}")
 
                 # 检测是否需要转码
                 needs_conversion = False
@@ -167,20 +170,20 @@ class PoetryService:
                 # 这些提供商需要转码
                 if provider_lower in ['loliapi', 'komll', 'cimuapi']:
                     needs_conversion = True
-                    print(f"[PoetryService] 检测到需要转码的图片源: {provider}")
+                    logger.info(f"检测到需要转码的图片源: {provider}")
                 # 或者 URL 中包含问题格式
                 elif any(ext in url.lower() for ext in ['.webp', '.gif', '.png']):
                     needs_conversion = True
-                    print(f"[PoetryService] 检测到需要转码的图片格式: {url}")
+                    logger.info(f"检测到需要转码的图片格式: {url}")
 
                 if needs_conversion:
-                    print(f"[PoetryService] 开始转码图片为 JPEG...")
+                    logger.info(f"开始转码图片为 JPEG...")
                     try:
                         # 图片转码：统一转换为 JPEG 格式，避免"文件内容与扩展名不匹配"问题
                         from app.services.image_service import ImageService
                         converted_url = await ImageService.process_image_url(url, enable_conversion=True)
                         if converted_url and converted_url.startswith('data:image/jpeg'):
-                            print(f"[PoetryService] ✅ 图片转码成功")
+                            logger.info(f"✅ 图片转码成功")
                             return {
                                 'url': converted_url,
                                 'use_cw': False,
@@ -188,18 +191,18 @@ class PoetryService:
                                 'original_url': url
                             }
                         else:
-                            print(f"[PoetryService] ⚠️  图片转码失败，使用原始 URL")
+                            logger.warning(f"⚠️  图片转码失败，使用原始 URL")
                             return {'url': url, 'use_cw': False}
                     except ImportError as e:
-                        print(f"[PoetryService] ⚠️  缺少 Pillow 库，跳过图片转码: {e}")
-                        print(f"[PoetryService] 💡 安装方法: pip install Pillow")
-                        print(f"[PoetryService] 📌 使用原始 URL（可能会导致图片验证失败）")
+                        logger.warning(f"⚠️  缺少 Pillow 库，跳过图片转码: {e}")
+                        logger.info(f"💡 安装方法: pip install Pillow")
+                        logger.warning(f"📌 使用原始 URL（可能会导致图片验证失败）")
                         return {'url': url, 'use_cw': False}
                     except Exception as e:
-                        print(f"[PoetryService] ⚠️  图片转码异常: {e}")
+                        logger.warning(f"⚠️  图片转码异常: {e}")
                         return {'url': url, 'use_cw': False}
                 else:
-                    print(f"[PoetryService] 图片已是 JPEG 格式，无需转码")
+                    logger.info(f"图片已是 JPEG 格式，无需转码")
                     return {'url': url, 'use_cw': False}
 
         # 标记由 clockin-worker 自行获取
@@ -210,7 +213,7 @@ class PoetryService:
         """获取诗词内容"""
         # 如果 api_type 为 None 或空字符串，返回 None
         if not api_type:
-            print(f"[PoetryService] API 类型为空: {api_type}")
+            logger.warning(f"API 类型为空: {api_type}")
             return None
 
         # 处理 admin-worker 的命名格式（如 poetry_tianqi_xiefeng）
@@ -218,11 +221,11 @@ class PoetryService:
 
         url = PoetryService.POETRY_APIS.get(actual_api_type)
         if not url:
-            print(f"[PoetryService] 未知的 API 类型: {api_type} (解析为: {actual_api_type})，支持的类型: {list(PoetryService.POETRY_APIS.keys())}")
+            logger.info(f"未知的 API 类型: {api_type} (解析为: {actual_api_type})，支持的类型: {list(PoetryService.POETRY_APIS.keys())}")
             return None
 
         try:
-            print(f"[PoetryService] 正在请求诗词API: {api_type} (实际: {actual_api_type}), URL: {url}")
+            logger.info(f"正在请求诗词API: {api_type} (实际: {actual_api_type}), URL: {url}")
 
             # 构建请求 URL（对于诗词 API 需要添加分类）
             request_url = url
@@ -230,7 +233,7 @@ class PoetryService:
                 # 将 poetry_tianqi_xiefeng 转换为 /tianqi/xiefeng.json
                 category = actual_param.replace('_', '/')
                 request_url = f"https://v1.jinrishici.com/{category}.json"
-                print(f"[PoetryService] 诗词分类: {category}, 完整URL: {request_url}")
+                logger.info(f"诗词分类: {category}, 完整URL: {request_url}")
 
             async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
                 response = await client.get(request_url)
@@ -240,7 +243,7 @@ class PoetryService:
                 # 必须先于 response.json() 处理，否则会抛出 JSONDecodeError
                 if actual_api_type == 'yuanmeng':
                     result = PoetryService._parse_yuanmeng(response.text)
-                    print(f"[PoetryService] yuanmeng 返回: {result[:30] if result else 'None'}...")
+                    logger.info(f"yuanmeng 返回: {result[:30] if result else 'None'}...")
                     return result
 
                 data = response.json()
@@ -248,7 +251,7 @@ class PoetryService:
                 # 根据不同 API 解析
                 if actual_api_type == 'poetry_all':
                     result = data.get('content') or data.get('origin', {}).get('content')
-                    print(f"[PoetryService] poetry_all 返回: {result[:30] if result else 'None'}...")
+                    logger.info(f"poetry_all 返回: {result[:30] if result else 'None'}...")
                     return result
 
                 elif actual_api_type == 'hitokoto':
@@ -256,7 +259,7 @@ class PoetryService:
                     # 如果有出处，附加到后面
                     if data.get('from'):
                         text += f' —— {data["from"]}'
-                    print(f"[PoetryService] hitokoto 返回: {text[:30]}...")
+                    logger.info(f"hitokoto 返回: {text[:30]}...")
                     return text
 
                 elif actual_api_type == 'cenguigui':
@@ -264,22 +267,22 @@ class PoetryService:
                     if data.get('code') == 200 and data.get('msg'):
                         text = data['msg']
                         result = PoetryService._decode_unicode(text)
-                        print(f"[PoetryService] cenguigui 返回: {result[:30]}...")
+                        logger.info(f"cenguigui 返回: {result[:30]}...")
                         return result
-                    print(f"[PoetryService] cenguigui 返回错误: code={data.get('code')}")
+                    logger.warning(f"cenguigui 返回错误: code={data.get('code')}")
                     return None
 
                 elif actual_api_type == 'klapi':
                     # 返回 data.data.text 字段
                     if data.get('code') == 200 and data.get('data') and data['data'].get('text'):
                         result = data['data']['text']
-                        print(f"[PoetryService] klapi 返回: {result[:30]}...")
+                        logger.info(f"klapi 返回: {result[:30]}...")
                         return result
-                    print(f"[PoetryService] klapi 返回错误: code={data.get('code')}")
+                    logger.warning(f"klapi 返回错误: code={data.get('code')}")
                     return None
 
         except Exception as e:
-            print(f"[PoetryService] 获取诗词失败 ({api_type}): {e}")
+            logger.warning(f"获取诗词失败 ({api_type}): {e}")
 
         return None
 
@@ -365,7 +368,7 @@ class PoetryService:
                 return await PoetryService._fetch_cimu_image(category)
 
         except Exception as e:
-            print(f"[PoetryService] 获取图片失败 ({provider}/{category}): {e}")
+            logger.warning(f"获取图片失败 ({provider}/{category}): {e}")
 
         return None
 
@@ -380,8 +383,8 @@ class PoetryService:
                 # 检查响应内容类型（支持多种可能的类型）
                 content_type = response.headers.get('content-type', '').lower()
                 if 'json' not in content_type:
-                    print(f"[PoetryService] 必应API返回非JSON内容: {content_type}")
-                    print(f"[PoetryService] 响应内容预览: {response.text[:200]}")
+                    logger.warning(f"必应API返回非JSON内容: {content_type}")
+                    logger.info(f"响应内容预览: {response.text[:200]}")
                     return None
 
                 data = response.json()
@@ -400,14 +403,14 @@ class PoetryService:
                             return f"https://www.bing.com{url}"
                         else:
                             # 其他情况，直接返回
-                            print(f"[PoetryService] Bing URL 格式异常: {url}")
+                            logger.warning(f"Bing URL 格式异常: {url}")
                             return None
 
         except json.JSONDecodeError as e:
-            print(f"[PoetryService] 必应API返回无效JSON: {e}")
-            print(f"[PoetryService] 响应内容: {response.text[:200] if 'response' in locals() else 'N/A'}")
+            logger.warning(f"必应API返回无效JSON: {e}")
+            logger.info(f"响应内容: {response.text[:200] if 'response' in locals() else 'N/A'}")
         except Exception as e:
-            print(f"[PoetryService] 获取必应图片失败: {e}")
+            logger.warning(f"获取必应图片失败: {e}")
 
         return None
 
@@ -430,18 +433,18 @@ class PoetryService:
                 content_type = response.headers.get('content-type', '')
                 if 'image/' in content_type:
                     final_url = str(response.url)
-                    print(f"[PoetryService] 重定向图片URL: {final_url}")
+                    logger.info(f"重定向图片URL: {final_url}")
                     return final_url
                 else:
                     # 如果不是图片，打印响应内容以便调试
                     text_preview = response.text[:100] if response.text else ''
-                    print(f"[PoetryService] API返回非图片内容: {content_type}, 预览: {text_preview}")
+                    logger.warning(f"API返回非图片内容: {content_type}, 预览: {text_preview}")
                     return None
 
         except httpx.HTTPStatusError as e:
-            print(f"[PoetryService] 获取重定向图片HTTP错误 ({url}): {e.response.status_code}")
+            logger.warning(f"获取重定向图片HTTP错误 ({url}): {e.response.status_code}")
         except Exception as e:
-            print(f"[PoetryService] 获取重定向图片失败 ({url}): {e}")
+            logger.warning(f"获取重定向图片失败 ({url}): {e}")
 
         return None
 
@@ -460,7 +463,7 @@ class PoetryService:
             if category == 'random' or category not in all_categories:
                 import random
                 selected_category = random.choice(all_categories)
-                print(f"[PoetryService] 次元API随机选择分类: {selected_category}")
+                logger.info(f"次元API随机选择分类: {selected_category}")
 
             # 构建API URL（注意末尾斜杠避免301重定向）
             url = f"https://t.alcy.cc/{selected_category}/"
@@ -479,17 +482,17 @@ class PoetryService:
                 content_type = response.headers.get('content-type', '')
                 if 'image/' in content_type:
                     final_url = str(response.url)
-                    print(f"[PoetryService] 次元API图片URL: {final_url}")
+                    logger.info(f"次元API图片URL: {final_url}")
                     return final_url
                 else:
                     # 如果不是图片，打印响应内容以便调试
                     text_preview = response.text[:100] if response.text else ''
-                    print(f"[PoetryService] 次元API返回非图片内容: {content_type}, 预览: {text_preview}")
+                    logger.warning(f"次元API返回非图片内容: {content_type}, 预览: {text_preview}")
                     return None
 
         except httpx.HTTPStatusError as e:
-            print(f"[PoetryService] 次元API HTTP错误 ({category}): {e.response.status_code}")
+            logger.warning(f"次元API HTTP错误 ({category}): {e.response.status_code}")
         except Exception as e:
-            print(f"[PoetryService] 获取次元API图片失败 ({category}): {e}")
+            logger.warning(f"获取次元API图片失败 ({category}): {e}")
 
         return None
