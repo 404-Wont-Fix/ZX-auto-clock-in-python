@@ -1,5 +1,8 @@
 FROM python:3.12-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 # 设置工作目录
 WORKDIR /app
 
@@ -18,6 +21,5 @@ RUN mkdir -p database logs
 # 暴露端口
 EXPOSE 8000
 
-# 启动命令（单进程，自动重启策略由 docker-compose 管理）
-# 生产环境建议使用多个 worker
+# 必须保持单进程：APScheduler 与进程内后台任务只允许有一个所有者。
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

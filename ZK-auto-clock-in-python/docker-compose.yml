@@ -1,28 +1,28 @@
-version: '3.8'
-
 services:
   zk-admin:
     build: .
     container_name: zk-admin
-    restart: always  # 自动重启：崩溃时自动重启
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
     ports:
       - "8032:8000"
     volumes:
-      # 数据持久化
       - ./database:/app/database
       - ./logs:/app/logs
-      # 配置文件挂载（便于修改配置，不重启容器即可生效）
-      - ./.env:/app/.env
     environment:
-      - TZ=Asia/Shanghai  # 设置时区为北京时间
-      - PYTHONUNBUFFERED=1  # 实时输出日志
+      APP_ENV: production
+      DEBUG: "false"
+      TZ: Asia/Shanghai
+      PYTHONUNBUFFERED: "1"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
-    # 资源限制（根据服务器配置调整）
+      start_period: 20s
+    stop_grace_period: 30s
     deploy:
       resources:
         limits:
@@ -31,7 +31,6 @@ services:
         reservations:
           cpus: '0.25'
           memory: 128M
-    # 日志配置
     logging:
       driver: "json-file"
       options:

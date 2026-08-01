@@ -3,13 +3,14 @@
 """
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from contextlib import asynccontextmanager
 from typing import Optional
 import logging
 import pytz
 
 from app.config import settings
-from app.services.clockin_service import ClockinService
+from app.services.task_service import ActiveTaskConflict, clockin_task_orchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -73,22 +74,17 @@ async def scheduled_clockin_job():
         from app.core.database import AsyncSessionLocal
 
         async with AsyncSessionLocal() as db:
-            # 触发所有用户打卡（标记为 scheduled）
-            # 注意：trigger_all_users 内部已经包含自动补签逻辑，不需要在这里重复处理
-            result = await ClockinService.trigger_all_users(db, triggered_by='scheduled')
-
-            # 记录结果
-            success_count = result.get('success', 0)
-            failure_count = result.get('failure', 0)
-            total_duration = result.get('duration_seconds', 0)
-
-            logger.info(f"=== 定时打卡任务完成 ===")
-            logger.info(f"总计: {result.get('total', 0)} 个用户")
-            logger.info(f"成功: {success_count} 个, 失败: {failure_count} 个")
-            logger.info(f"总耗时: {total_duration:.2f} 秒")
-
-            if failure_count > 0:
-                logger.warning(f"有 {failure_count} 个用户打卡失败，已在 trigger_all_users 中自动执行补签")
+            try:
+                task = await clockin_task_orchestrator.enqueue_task(
+                    db,
+                    scope="all",
+                    target_date=None,
+                    requested_user_ids=[],
+                    triggered_by="scheduled",
+                )
+                logger.info("定时打卡任务已入队: %s", task.id)
+            except ActiveTaskConflict as exc:
+                logger.warning("已有任务 %s 正在执行，本次定时任务跳过", exc.task_id)
 
     except Exception as e:
         logger.error(f"定时打卡任务失败: {e}", exc_info=True)
@@ -136,6 +132,37 @@ async def cleanup_job():
             logger.warning(f"清理了 {stale_count} 个过期的活动任务")
     except Exception as e:
         logger.error(f"清理活动任务失败: {e}")
+
+
+async def scheduled_content_source_probe_job():
+    """每小时用独立数据库会话探测所有未归档内容源。"""
+    from app.core.database import AsyncSessionLocal
+    from app.services.content_source_service import ContentSourceService
+
+    try:
+        async with AsyncSessionLocal() as db:
+            results = await ContentSourceService.test_all(db)
+        success_count = sum(1 for result in results if result.get('success'))
+        logger.info(
+            "内容源健康探测完成: 成功 %s, 失败 %s",
+            success_count,
+            len(results) - success_count,
+        )
+    except Exception:
+        logger.exception("内容源健康探测任务失败")
+
+
+def add_content_source_probe_job(target_scheduler: AsyncIOScheduler):
+    """向调度器注册固定的一小时内容源探测任务。"""
+    target_scheduler.add_job(
+        scheduled_content_source_probe_job,
+        trigger=IntervalTrigger(hours=1),
+        id='content-source-probe',
+        name='内容源健康探测',
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
 
 
 async def start_scheduler():
@@ -217,6 +244,12 @@ async def start_scheduler():
         logger.info(f"清理任务已添加: 每天 UTC 3:00")
     except Exception as e:
         logger.error(f"添加清理任务失败: {e}", exc_info=True)
+
+    try:
+        add_content_source_probe_job(scheduler)
+        logger.info("内容源健康探测任务已添加: 每小时执行")
+    except Exception as e:
+        logger.error(f"添加内容源健康探测任务失败: {e}", exc_info=True)
 
     # 启动调度器
     scheduler.start()

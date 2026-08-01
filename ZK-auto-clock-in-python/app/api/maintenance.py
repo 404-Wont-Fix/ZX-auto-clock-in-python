@@ -4,18 +4,27 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete, select
+from sqlalchemy.engine import make_url
 from datetime import datetime, timedelta
-import os
+from pathlib import Path
+import asyncio
 import logging
-import shutil
+import sqlite3
 
 from app.core.database import get_db
 from app.api.auth import verify_session
+from app.config import settings
 from app.models.database import Session as DBSession, ClockinResult, DailySummary
 from app.models.schemas import CleanupRequest, CleanupResponse, SuccessResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/maintenance", tags=["维护"])
+
+
+def _sqlite_backup(source_file: Path, backup_file: Path) -> None:
+    """使用 SQLite online backup API 创建一致快照（包括 WAL 中已提交数据）。"""
+    with sqlite3.connect(source_file) as source, sqlite3.connect(backup_file) as target:
+        source.backup(target)
 
 
 @router.post("/cleanup", response_model=CleanupResponse)
@@ -25,7 +34,7 @@ async def cleanup_old_records(
     session: DBSession = Depends(verify_session)
 ):
     """清理旧数据"""
-    days_to_keep = request.days or 7
+    days_to_keep = request.days
 
     cutoff_date = datetime.utcnow() - timedelta(days=days_to_keep)
     cutoff_date_str = cutoff_date.strftime('%Y-%m-%d')
@@ -67,32 +76,33 @@ async def backup_database(
 ):
     """备份数据库"""
     try:
-        # 数据库文件路径
-        db_file = "database/zk_admin.db"
-        backup_dir = "backups"
+        database_url = make_url(settings.database_url)
+        if not database_url.drivername.startswith("sqlite") or not database_url.database:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="仅支持备份文件 SQLite 数据库",
+            )
+        db_file = Path(database_url.database)
+        backup_dir = db_file.parent / "backups"
 
-        # 创建备份目录
-        os.makedirs(backup_dir, exist_ok=True)
+        backup_dir.mkdir(parents=True, exist_ok=True)
 
-        # 备份文件名
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_file = f"{backup_dir}/zk_admin_{timestamp}.db"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        backup_file = backup_dir / f"zk_admin_{timestamp}.db"
 
-        # 检查数据库文件是否存在
-        if not os.path.exists(db_file):
+        if not db_file.is_file():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="数据库文件不存在"
             )
 
-        # 复制文件
-        shutil.copy2(db_file, backup_file)
-        logger.info(f"数据库备份成功: {backup_file}")
+        await asyncio.to_thread(_sqlite_backup, db_file, backup_file)
+        logger.info("数据库备份成功: %s", backup_file)
 
         return SuccessResponse(
             success=True,
             message=f"备份已创建: {backup_file}",
-            data={"backup_file": backup_file}
+            data={"backup_file": str(backup_file)}
         )
 
     except HTTPException:
@@ -103,4 +113,3 @@ async def backup_database(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="备份失败，请查看服务端日志"
         )
-

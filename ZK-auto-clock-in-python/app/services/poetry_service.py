@@ -1,498 +1,150 @@
-"""
-诗词和图片 API 服务
-"""
-import httpx
-import json
-import re
-import logging
-from typing import Optional, Dict
-from app.models.database import User
+"""用户文字与图片策略到受控内容源的适配层。"""
 
-logger = logging.getLogger(__name__)
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.database import User
+from app.services.content_source_service import ContentResult, ContentSourceService
+
+
+DEFAULT_DAILY_COMMENT = "今日学习内容总结，收获满满！"
+DEFAULT_SPORTS_COMMENT = "已运动！"
 
 
 class PoetryService:
-    """诗词和图片服务类"""
+    """保留旧类名，内部统一委托给可管理内容源。"""
 
-    @staticmethod
-    def _decode_unicode(text: str) -> str:
-        """解码 Unicode 转义序列（如 \u505a\u4efb\u4f55 -> 做任何一件事）"""
-        if not text:
-            return text
-
-        # 仅替换 \uXXXX / \UXXXXXXXX 转义序列，其余字符（含字面 " 和 \）原样保留。
-        # 相比旧的"包引号后 json.loads"做法，不会因文本含 " 或 \ 而抛错回退到未解码串。
-        def _repl(m):
-            hexs = m.group(1) or m.group(2)
-            try:
-                return chr(int(hexs, 16))
-            except (ValueError, OverflowError):
-                return m.group(0)
-
-        return re.sub(r'\\(?:u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8}))', _repl, text)
-
-    # 匹配 document.write("...") 或 document.write('...')，提取引号内的内容
-    _YUANMENG_RE = re.compile(r'document\.write\(\s*["\'](.*)["\']\s*\)\s*;?', re.DOTALL)
-
-    @staticmethod
-    def _parse_yuanmeng(text: str) -> Optional[str]:
-        """
-        解析远梦API返回的 document.write("...") 格式。
-
-        例如：document.write("富士山终究留不住遗落的樱花。");
-        会剥掉前后的 document.write("") / ; 包装，只保留引号内的句子，
-        并自动解码其中的 Unicode 转义序列。
-
-        兜底：若响应恰好是 JSON（部分子接口），也尝试取 quote/msg/hitokoto 字段。
-        """
-        if not text:
-            return None
-
-        text = text.strip()
-
-        # 1) document.write("...") 格式 —— 当前主格式
-        match = PoetryService._YUANMENG_RE.search(text)
-        if match:
-            raw = match.group(1)
-            # 解码可能的 Unicode 转义，并去除首尾空白
-            result = PoetryService._decode_unicode(raw).strip()
-            return result or None
-
-        # 2) 兜底：极少数子接口可能仍返回 JSON
-        try:
-            data = json.loads(text)
-            if isinstance(data, dict):
-                value = data.get('quote') or data.get('msg') or data.get('hitokoto')
-                if value:
-                    return PoetryService._decode_unicode(value).strip() or None
-        except Exception:
-            pass
-
-        logger.warning(f"yuanmeng 无法识别的响应格式，前100字符: {text[:100]}")
-        return None
-
-    # 诗词 API 配置（与原JS项目保持一致）
-    POETRY_APIS = {
-        'poetry_all': 'https://v1.jinrishici.com/all.json',
-        'hitokoto': 'https://v1.hitokoto.cn/',
-        # 'cenguigui': 'https://api-v2.cenguigui.cn/api/yiyan/?code=json',  # API 已失效，暂时注释
-        '远梦API': 'https://api.qzqi.com/api/v1/Yiyan',
-        # 'klapi': 'https://www.klapi.cn/api/yiyan.php?type=json',  # API 已失效，暂时注释
+    LEGACY_TEXT_SOURCE_MAP = {
+        "远梦api": "qzqi_yiyan",
+        "yuanmeng": "qzqi_yiyan",
+        "yuanmeng_default": "qzqi_yiyan",
+        "cenguigui": "qzqi_yiyan",
+        "cenguigui_default": "qzqi_yiyan",
+        "klapi": "qzqi_yiyan",
+        "klapi_default": "qzqi_yiyan",
+        "qzqi": "qzqi_yiyan",
+        "qzqi_yiyan": "qzqi_yiyan",
     }
 
-    # 图片 API 配置（与原JS项目保持一致）
-    IMAGE_APIS = {
-        'bing': 'https://www.bing.com/HPImageArchive.aspx?format=js&n=1&mkt=zh-CN',
-        'bing_uhd': 'https://bing.img.run/uhd.php',
-        # 'komll': 'https://api.komll.com/images',  # 暂时禁用：URL 无扩展名，导致图片验证失败
-        # 'loliapi': 'https://www.loliapi.com/acg/',  # 暂时禁用：返回 WebP 格式，精夏平台不支持
-    }
-
-    # 次元 API 分类（与原JS项目保持一致）
-    CIMU_API_CATEGORIES = {
-        'ycy': '二次元自适应',
-        'moez': '萌版自适应',
-        'ai': 'AI自适应',
-        'ysz': '原神自适应',
-        'pc': 'PC横图',
-        'moe': '萌版横图',
-        'fj': '风景横图',
-        'bd': '白底横图',
-        'ys': '原神横图',
-        'mp': '移动竖图',
-        'moemp': '萌版竖图',
-        'ysmp': '原神竖图',
-        'aimp': 'AI竖图',
-        'tx': '头像方图',
-        'lai': '七濑胡桃',
-        'xhl': '小狐狸',
-        'random': '随机',
-    }
-
-    @staticmethod
-    async def get_daily_comment(user: User) -> str:
-        """获取每日打卡备注"""
-        # 优先级：自定义 > API > 默认
-        if user.daily_comment_type == 'custom':
-            return user.custom_daily_comment or "今日学习内容总结，收获满满！"
-
-        if user.daily_comment_type == 'api':
-            api_type = user.daily_comment_api or 'poetry_all'  # 默认使用 poetry_all
-            logger.info(f"用户 {user.username} 配置的每日诗词API: {api_type} (原始值: {user.daily_comment_api})")
-            comment = await PoetryService._fetch_poetry(api_type)
-            if comment:
-                logger.info(f"每日诗词API返回内容: {comment[:50]}...")
-            else:
-                logger.warning(f"每日诗词API返回为空，使用默认值")
-            return comment or "今日学习内容总结，收获满满！"
-
-        return "今日学习内容总结，收获满满！"
-
-    @staticmethod
-    async def get_sports_comment(user: User) -> str:
-        """获取运动打卡备注"""
-        # 优先级：自定义 > API > 默认
-        if user.sports_comment_type == 'custom':
-            return user.sports_custom_comment or "已运动！"
-
-        if user.sports_comment_type == 'api':
-            api_type = user.sports_comment_api or 'poetry_all'  # 默认使用 poetry_all
-            logger.info(f"用户 {user.username} 配置的诗词API: {api_type} (原始值: {user.sports_comment_api})")
-            comment = await PoetryService._fetch_poetry(api_type)
-            if comment:
-                logger.info(f"诗词API返回内容: {comment[:50]}...")
-            else:
-                logger.warning(f"诗词API返回为空，使用默认值")
-            return comment or "已运动！"
-
-        return "已运动！"
-
-    @staticmethod
-    async def get_sports_image(user: User) -> Optional[Dict[str, str]]:
-        """获取运动打卡图片（支持自动转码为 JPEG）"""
-        # 如果是 default，返回 None，由 clockin-worker 处理
-        if user.sports_image_type == 'default':
+    @classmethod
+    def normalize_text_source_key(cls, source_key: Optional[str]) -> Optional[str]:
+        if not source_key:
             return None
-
-        if user.sports_image_type == 'api':
-            provider = user.sports_image_provider or 'bing'
-            category = user.sports_image_category or 'random'
-
-            url = await PoetryService._fetch_image_url(provider, category)
-
-            if url:
-                logger.info(f"原始图片 URL: {url}")
-
-                # 检测是否需要转码
-                needs_conversion = False
-                provider_lower = provider.lower()
-
-                # 这些提供商需要转码
-                if provider_lower in ['loliapi', 'komll', 'cimuapi']:
-                    needs_conversion = True
-                    logger.info(f"检测到需要转码的图片源: {provider}")
-                # 或者 URL 中包含问题格式
-                elif any(ext in url.lower() for ext in ['.webp', '.gif', '.png']):
-                    needs_conversion = True
-                    logger.info(f"检测到需要转码的图片格式: {url}")
-
-                if needs_conversion:
-                    logger.info(f"开始转码图片为 JPEG...")
-                    try:
-                        # 图片转码：统一转换为 JPEG 格式，避免"文件内容与扩展名不匹配"问题
-                        from app.services.image_service import ImageService
-                        converted_url = await ImageService.process_image_url(url, enable_conversion=True)
-                        if converted_url and converted_url.startswith('data:image/jpeg'):
-                            logger.info(f"✅ 图片转码成功")
-                            return {
-                                'url': converted_url,
-                                'use_cw': False,
-                                'converted': True,
-                                'original_url': url
-                            }
-                        else:
-                            logger.warning(f"⚠️  图片转码失败，使用原始 URL")
-                            return {'url': url, 'use_cw': False}
-                    except ImportError as e:
-                        logger.warning(f"⚠️  缺少 Pillow 库，跳过图片转码: {e}")
-                        logger.info(f"💡 安装方法: pip install Pillow")
-                        logger.warning(f"📌 使用原始 URL（可能会导致图片验证失败）")
-                        return {'url': url, 'use_cw': False}
-                    except Exception as e:
-                        logger.warning(f"⚠️  图片转码异常: {e}")
-                        return {'url': url, 'use_cw': False}
-                else:
-                    logger.info(f"图片已是 JPEG 格式，无需转码")
-                    return {'url': url, 'use_cw': False}
-
-        # 标记由 clockin-worker 自行获取
-        return {'url': None, 'use_cw': True}
+        normalized = source_key.strip()
+        lowered = normalized.lower()
+        if lowered in cls.LEGACY_TEXT_SOURCE_MAP:
+            return cls.LEGACY_TEXT_SOURCE_MAP[lowered]
+        if lowered.startswith("poetry_"):
+            return "poetry_all"
+        if lowered.startswith("hitokoto_"):
+            return "hitokoto"
+        return normalized
 
     @staticmethod
-    async def _fetch_poetry(api_type: str) -> Optional[str]:
-        """获取诗词内容"""
-        # 如果 api_type 为 None 或空字符串，返回 None
-        if not api_type:
-            logger.warning(f"API 类型为空: {api_type}")
+    def normalize_image_source_key(source_key: Optional[str]) -> Optional[str]:
+        if not source_key:
             return None
+        normalized = source_key.strip().lower()
+        if normalized in {"bing_uhd", "bing_uhd_official"}:
+            return "bing_uhd"
+        return normalized
 
-        # 处理 admin-worker 的命名格式（如 poetry_tianqi_xiefeng）
-        actual_api_type, actual_param = PoetryService._parse_api_type(api_type)
+    @staticmethod
+    async def get_daily_comment_selection(
+        db: AsyncSession,
+        user: User,
+    ) -> ContentResult:
+        if user.daily_comment_type == "custom":
+            return ContentResult(
+                value=user.custom_daily_comment or DEFAULT_DAILY_COMMENT,
+                source_key=None,
+                fallback=True,
+            )
+        if user.daily_comment_type != "api":
+            return ContentResult(
+                value=DEFAULT_DAILY_COMMENT,
+                source_key=None,
+                fallback=True,
+            )
+        return await ContentSourceService.fetch_content(
+            db,
+            source_type="text",
+            requested_key=PoetryService.normalize_text_source_key(user.daily_comment_api),
+            static_fallback=DEFAULT_DAILY_COMMENT,
+        )
 
-        url = PoetryService.POETRY_APIS.get(actual_api_type)
-        if not url:
-            logger.info(f"未知的 API 类型: {api_type} (解析为: {actual_api_type})，支持的类型: {list(PoetryService.POETRY_APIS.keys())}")
+    @staticmethod
+    async def get_sports_comment_selection(
+        db: AsyncSession,
+        user: User,
+    ) -> ContentResult:
+        if user.sports_comment_type == "custom":
+            return ContentResult(
+                value=user.sports_custom_comment or DEFAULT_SPORTS_COMMENT,
+                source_key=None,
+                fallback=True,
+            )
+        if user.sports_comment_type != "api":
+            return ContentResult(
+                value=DEFAULT_SPORTS_COMMENT,
+                source_key=None,
+                fallback=True,
+            )
+        return await ContentSourceService.fetch_content(
+            db,
+            source_type="text",
+            requested_key=PoetryService.normalize_text_source_key(user.sports_comment_api),
+            static_fallback=DEFAULT_SPORTS_COMMENT,
+        )
+
+    @staticmethod
+    async def get_sports_image_selection(
+        db: AsyncSession,
+        user: User,
+    ) -> ContentResult:
+        if user.sports_image_type != "api":
+            return ContentResult(
+                value=None,
+                source_key=None,
+                fallback=True,
+            )
+        return await ContentSourceService.fetch_content(
+            db,
+            source_type="image",
+            requested_key=PoetryService.normalize_image_source_key(user.sports_image_provider),
+            category=user.sports_image_category or "random",
+            static_fallback=None,
+        )
+
+    @staticmethod
+    async def get_daily_comment(user: User, db: Optional[AsyncSession] = None) -> str:
+        """兼容旧调用；生产调用应传入数据库会话。"""
+        if db is None:
+            if user.daily_comment_type == "custom":
+                return user.custom_daily_comment or DEFAULT_DAILY_COMMENT
+            return DEFAULT_DAILY_COMMENT
+        result = await PoetryService.get_daily_comment_selection(db, user)
+        return result.value or DEFAULT_DAILY_COMMENT
+
+    @staticmethod
+    async def get_sports_comment(user: User, db: Optional[AsyncSession] = None) -> str:
+        """兼容旧调用；生产调用应传入数据库会话。"""
+        if db is None:
+            if user.sports_comment_type == "custom":
+                return user.sports_custom_comment or DEFAULT_SPORTS_COMMENT
+            return DEFAULT_SPORTS_COMMENT
+        result = await PoetryService.get_sports_comment_selection(db, user)
+        return result.value or DEFAULT_SPORTS_COMMENT
+
+    @staticmethod
+    async def get_sports_image(user: User, db: Optional[AsyncSession] = None):
+        """兼容旧调用并保持 Worker 所需的字典形状。"""
+        if db is None or user.sports_image_type != "api":
             return None
-
-        try:
-            logger.info(f"正在请求诗词API: {api_type} (实际: {actual_api_type}), URL: {url}")
-
-            # 构建请求 URL（对于诗词 API 需要添加分类）
-            request_url = url
-            if actual_api_type == 'poetry_all' and actual_param:
-                # 将 poetry_tianqi_xiefeng 转换为 /tianqi/xiefeng.json
-                category = actual_param.replace('_', '/')
-                request_url = f"https://v1.jinrishici.com/{category}.json"
-                logger.info(f"诗词分类: {category}, 完整URL: {request_url}")
-
-            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-                response = await client.get(request_url)
-                response.raise_for_status()
-
-                # 远梦API 返回 document.write("...") 格式的 JS 文本，不是 JSON，
-                # 必须先于 response.json() 处理，否则会抛出 JSONDecodeError
-                if actual_api_type == 'yuanmeng':
-                    result = PoetryService._parse_yuanmeng(response.text)
-                    logger.info(f"yuanmeng 返回: {result[:30] if result else 'None'}...")
-                    return result
-
-                data = response.json()
-
-                # 根据不同 API 解析
-                if actual_api_type == 'poetry_all':
-                    result = data.get('content') or data.get('origin', {}).get('content')
-                    logger.info(f"poetry_all 返回: {result[:30] if result else 'None'}...")
-                    return result
-
-                elif actual_api_type == 'hitokoto':
-                    text = data.get('hitokoto', '')
-                    # 如果有出处，附加到后面
-                    if data.get('from'):
-                        text += f' —— {data["from"]}'
-                    logger.info(f"hitokoto 返回: {text[:30]}...")
-                    return text
-
-                elif actual_api_type == 'cenguigui':
-                    # 检查返回码，需要解码Unicode
-                    if data.get('code') == 200 and data.get('msg'):
-                        text = data['msg']
-                        result = PoetryService._decode_unicode(text)
-                        logger.info(f"cenguigui 返回: {result[:30]}...")
-                        return result
-                    logger.warning(f"cenguigui 返回错误: code={data.get('code')}")
-                    return None
-
-                elif actual_api_type == 'klapi':
-                    # 返回 data.data.text 字段
-                    if data.get('code') == 200 and data.get('data') and data['data'].get('text'):
-                        result = data['data']['text']
-                        logger.info(f"klapi 返回: {result[:30]}...")
-                        return result
-                    logger.warning(f"klapi 返回错误: code={data.get('code')}")
-                    return None
-
-        except Exception as e:
-            logger.warning(f"获取诗词失败 ({api_type}): {e}")
-
-        return None
-
-    @staticmethod
-    def _parse_api_type(api_type: str) -> tuple:
-        """
-        解析 API 类型，处理 admin-worker 的命名格式
-        返回 (实际 API 类型, 参数)
-
-        例如：
-        - poetry_all -> ('poetry_all', None)
-        - poetry_tianqi_xiefeng -> ('poetry_all', 'tianqi_xiefeng')
-        - hitokoto_all -> ('hitokoto', None)
-        - hitokoto_a -> ('hitokoto', 'a')
-        - cenguigui_default -> ('cenguigui', None)
-        - yuanmeng_default -> ('yuanmeng', None)
-        """
-        if not api_type:
-            return None, None
-
-        # 处理 poetry_xxx 格式
-        if api_type.startswith('poetry_'):
-            parts = api_type.split('_', 1)
-            if len(parts) == 2:
-                param = parts[1]
-                # 如果是 poetry_all 或 poetry_default，不添加分类
-                if param in ['all', 'default']:
-                    return 'poetry_all', None
-                return 'poetry_all', param
-            return 'poetry_all', None
-
-        # 处理 hitokoto_xxx 格式
-        if api_type.startswith('hitokoto_'):
-            parts = api_type.split('_', 1)
-            if len(parts) == 2:
-                param = parts[1]
-                # 如果是 all 或 default，不添加分类
-                if param in ['all', 'default']:
-                    return 'hitokoto', None
-                return 'hitokoto', param
-            return 'hitokoto', None
-
-        # 处理 cenguigui_xxx 格式
-        if api_type.startswith('cenguigui_'):
-            # 忽略后缀，直接使用基础 API
-            return 'cenguigui', None
-
-        # 处理 yuanmeng_xxx 格式
-        if api_type.startswith('yuanmeng_'):
-            return 'yuanmeng', None
-
-        # 处理 klapi_xxx 格式
-        if api_type.startswith('klapi_'):
-            return 'klapi', None
-
-        # 直接返回原始类型
-        return api_type, None
-
-    @staticmethod
-    async def _fetch_image_url(provider: str, category: str) -> Optional[str]:
-        """获取图片 URL（自动跟随302重定向）"""
-        try:
-            if provider == 'bing':
-                return await PoetryService._fetch_bing_image()
-
-            elif provider == 'bing_uhd':
-                # Bing UHD 第三方 API，通过302重定向获取高清壁纸
-                url = PoetryService.IMAGE_APIS['bing_uhd']
-                return await PoetryService._fetch_redirect_image(url)
-
-            elif provider == 'komll':
-                # Komll 使用固定的 URL，返回的是图片URL（会302重定向）
-                url = PoetryService.IMAGE_APIS['komll']
-                return await PoetryService._fetch_redirect_image(url)
-
-            elif provider == 'loliapi':
-                # LoliAPI 会302重定向到实际图片URL
-                url = PoetryService.IMAGE_APIS['loliapi']
-                return await PoetryService._fetch_redirect_image(url)
-
-            elif provider == 'cimuapi':
-                # 次元API支持多个分类
-                return await PoetryService._fetch_cimu_image(category)
-
-        except Exception as e:
-            logger.warning(f"获取图片失败 ({provider}/{category}): {e}")
-
-        return None
-
-    @staticmethod
-    async def _fetch_bing_image() -> Optional[str]:
-        """获取必应壁纸"""
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(PoetryService.IMAGE_APIS['bing'])
-                response.raise_for_status()
-
-                # 检查响应内容类型（支持多种可能的类型）
-                content_type = response.headers.get('content-type', '').lower()
-                if 'json' not in content_type:
-                    logger.warning(f"必应API返回非JSON内容: {content_type}")
-                    logger.info(f"响应内容预览: {response.text[:200]}")
-                    return None
-
-                data = response.json()
-
-                images = data.get('images', [])
-                if images:
-                    image = images[0]
-                    url = image.get('url')
-                    if url:
-                        # Bing API 返回的 url 可能是完整URL或相对路径
-                        if url.startswith('http'):
-                            # 已经是完整 URL
-                            return url
-                        elif url.startswith('/'):
-                            # 相对路径，需要拼接域名
-                            return f"https://www.bing.com{url}"
-                        else:
-                            # 其他情况，直接返回
-                            logger.warning(f"Bing URL 格式异常: {url}")
-                            return None
-
-        except json.JSONDecodeError as e:
-            logger.warning(f"必应API返回无效JSON: {e}")
-            logger.info(f"响应内容: {response.text[:200] if 'response' in locals() else 'N/A'}")
-        except Exception as e:
-            logger.warning(f"获取必应图片失败: {e}")
-
-        return None
-
-    @staticmethod
-    async def _fetch_redirect_image(url: str) -> Optional[str]:
-        """获取重定向后的图片URL（处理302跳转）"""
-        try:
-            # 使用 follow_redirects=True 自动跟随重定向
-            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-                response = await client.get(
-                    url,
-                    headers={
-                        'Accept': 'image/*, application/json, text/html',
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    }
-                )
-                response.raise_for_status()
-
-                # 检查响应内容类型，如果是图片则返回URL
-                content_type = response.headers.get('content-type', '')
-                if 'image/' in content_type:
-                    final_url = str(response.url)
-                    logger.info(f"重定向图片URL: {final_url}")
-                    return final_url
-                else:
-                    # 如果不是图片，打印响应内容以便调试
-                    text_preview = response.text[:100] if response.text else ''
-                    logger.warning(f"API返回非图片内容: {content_type}, 预览: {text_preview}")
-                    return None
-
-        except httpx.HTTPStatusError as e:
-            logger.warning(f"获取重定向图片HTTP错误 ({url}): {e.response.status_code}")
-        except Exception as e:
-            logger.warning(f"获取重定向图片失败 ({url}): {e}")
-
-        return None
-
-    @staticmethod
-    async def _fetch_cimu_image(category: str) -> Optional[str]:
-        """获取次元API图片（支持多分类，自动302重定向）"""
-        try:
-            # 次元API的所有分类
-            all_categories = [
-                'ycy', 'moez', 'ai', 'ysz', 'pc', 'moe', 'fj', 'bd',
-                'ys', 'mp', 'moemp', 'ysmp', 'aimp', 'tx', 'lai', 'xhl'
-            ]
-
-            # 如果是随机或不存在的分类，随机选择一个
-            selected_category = category
-            if category == 'random' or category not in all_categories:
-                import random
-                selected_category = random.choice(all_categories)
-                logger.info(f"次元API随机选择分类: {selected_category}")
-
-            # 构建API URL（注意末尾斜杠避免301重定向）
-            url = f"https://t.alcy.cc/{selected_category}/"
-
-            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-                response = await client.get(
-                    url,
-                    headers={
-                        'Accept': 'image/*, application/json, text/html',
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    }
-                )
-                response.raise_for_status()
-
-                # 检查响应内容类型，如果是图片则返回URL
-                content_type = response.headers.get('content-type', '')
-                if 'image/' in content_type:
-                    final_url = str(response.url)
-                    logger.info(f"次元API图片URL: {final_url}")
-                    return final_url
-                else:
-                    # 如果不是图片，打印响应内容以便调试
-                    text_preview = response.text[:100] if response.text else ''
-                    logger.warning(f"次元API返回非图片内容: {content_type}, 预览: {text_preview}")
-                    return None
-
-        except httpx.HTTPStatusError as e:
-            logger.warning(f"次元API HTTP错误 ({category}): {e.response.status_code}")
-        except Exception as e:
-            logger.warning(f"获取次元API图片失败 ({category}): {e}")
-
-        return None
+        result = await PoetryService.get_sports_image_selection(db, user)
+        if not result.value:
+            return None
+        return {"url": result.value, "use_cw": False}

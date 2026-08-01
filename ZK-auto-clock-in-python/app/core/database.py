@@ -1,23 +1,37 @@
 """
 数据库连接配置
 """
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.pool import StaticPool
 import os
 from app.config import settings
 
 # 确保数据库目录存在
 os.makedirs("database", exist_ok=True)
 
-# 创建异步引擎
-# SQLite 需要使用 aiosqlite 驱动
+# 文件 SQLite 使用 SQLAlchemy/aiosqlite 默认的独立连接池（NullPool）。
+# 禁止 StaticPool：它会让多个 AsyncSession 共用一个事务连接。
+database_url = settings.database_url.replace("sqlite://", "sqlite+aiosqlite://")
+is_sqlite = database_url.startswith("sqlite+aiosqlite:")
 engine = create_async_engine(
-    settings.database_url.replace("sqlite://", "sqlite+aiosqlite://"),
-    connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {},
-    poolclass=StaticPool,  # SQLite 使用静态连接池
-    echo=settings.debug,  # 开发模式下打印 SQL
+    database_url,
+    connect_args={"check_same_thread": False, "timeout": 30} if is_sqlite else {},
+    echo=settings.debug,
+    hide_parameters=True,
 )
+
+
+if is_sqlite:
+    @event.listens_for(engine.sync_engine, "connect")
+    def _configure_sqlite_connection(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.execute("PRAGMA foreign_keys=ON")
+        finally:
+            cursor.close()
 
 # 创建会话工厂
 AsyncSessionLocal = async_sessionmaker(
@@ -49,7 +63,16 @@ async def init_db():
     """初始化数据库表"""
     async with engine.begin() as conn:
         # 导入所有模型
-        from app.models.database import User, ClockinResult, DailySummary, Task, Config, Session
+        from app.models.database import (
+            ClockinResult,
+            Config,
+            ContentSource,
+            DailySummary,
+            Session,
+            Task,
+            User,
+            WorkerApi,
+        )
 
         # 创建所有表
         await conn.run_sync(Base.metadata.create_all)

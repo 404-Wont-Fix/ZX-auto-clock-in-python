@@ -1,24 +1,33 @@
 """
 配置管理 API
 """
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime
 import asyncio
 import logging
-import json
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from app.core.database import get_db
 from app.api.auth import verify_session
-from app.models.database import Session as DBSession, Config, User, WorkerApi
+from app.models.database import Session as DBSession, Config
 from app.models.schemas import ConfigUpdateRequest, ConfigResponse, SuccessResponse
 from app.config import settings
 from app.core.scheduler import get_schedule_info, reload_clockin_job
+from app.services.config_transfer_service import ConfigTransferService
 
 router = APIRouter(prefix="/api/config", tags=["配置管理"])
 logger = logging.getLogger(__name__)
+BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
+
+
+def build_config_export_filename(now: datetime | None = None) -> str:
+    """生成与旧版后台一致、按北京时间标记日期的配置文件名。"""
+    current_time = now or datetime.now(BEIJING_TIMEZONE)
+    beijing_date = current_time.astimezone(BEIJING_TIMEZONE).date().isoformat()
+    return f"zk-admin-config-{beijing_date}.json"
 
 
 @router.get("", response_model=ConfigResponse)
@@ -27,8 +36,6 @@ async def get_config(
     session: DBSession = Depends(verify_session)
 ):
     """获取系统配置"""
-    from sqlalchemy import select
-
     # 从数据库获取配置（优先）
     result = await db.execute(select(Config))
     db_configs = result.scalars().all()
@@ -38,7 +45,6 @@ async def get_config(
     # 默认配置
     default_configs = {
         'clockin_api_url': settings.clockin_api_url,
-        'clockin_api_token': settings.clockin_api_token,
         'api_request_delay': settings.api_request_delay,
         'clockin_type_delay': settings.clockin_type_delay,
         'clockin_retry_count': settings.clockin_retry_count,
@@ -55,6 +61,8 @@ async def get_config(
 
     # 合并数据库配置
     for config in db_configs:
+        if config.key in ConfigTransferService.SENSITIVE_CONFIG_KEYS:
+            continue
         config_dict[config.key] = config.value
 
     # 填充默认配置
@@ -72,11 +80,13 @@ async def update_config(
     session: DBSession = Depends(verify_session)
 ):
     """更新系统配置"""
-    from sqlalchemy import select
     from datetime import datetime
-    from app.core.scheduler import reload_clockin_job
 
-    update_data = updates.model_dump(exclude_unset=True)
+    update_data = {
+        key: value
+        for key, value in updates.model_dump(exclude_unset=True).items()
+        if value is not None
+    }
 
     # 检查是否更新了定时任务配置
     schedule_cron_updated = 'schedule_cron' in update_data
@@ -222,65 +232,16 @@ async def export_config(
     db: AsyncSession = Depends(get_db),
     session: DBSession = Depends(verify_session)
 ):
-    """导出系统配置和用户信息为 JSON"""
+    """导出不包含用户密码或 Worker Token 的 2.0 配置文件。"""
     try:
-        # 获取所有配置
-        config_result = await db.execute(select(Config))
-        configs = config_result.scalars().all()
-        config_dict = {config.key: config.value for config in configs}
-
-        # 获取所有用户信息（包含密码以便恢复）
-        user_result = await db.execute(select(User))
-        users = user_result.scalars().all()
-
-        users_list = []
-        for user in users:
-            user_dict = {
-                'username': user.username,
-                'password': user.password,  # 包含密码以便完整恢复
-                'nickname': user.nickname,
-                'enabled': user.enabled,
-                'sports_comment_type': user.sports_comment_type,
-                'daily_comment_type': user.daily_comment_type,
-                'sports_comment_api': user.sports_comment_api,
-                'daily_comment_api': user.daily_comment_api,
-                'sports_image_type': user.sports_image_type,
-                'sports_image_provider': user.sports_image_provider,
-                'sports_image_category': user.sports_image_category,
-                'clockin_count': user.clockin_count,
-                'last_clockin': user.last_clockin.isoformat() if user.last_clockin else None,
-                'created_at': user.created_at.isoformat() if user.created_at else None,
-            }
-            users_list.append(user_dict)
-
-        # 获取所有执行器API配置
-        worker_api_result = await db.execute(select(WorkerApi))
-        worker_apis = worker_api_result.scalars().all()
-
-        worker_apis_list = []
-        for api in worker_apis:
-            api_dict = {
-                'name': api.name,
-                'url': api.url,
-                'token': api.token,
-                'enabled': bool(api.enabled),  # 确保是布尔值
-                'note': api.note,
-            }
-            worker_apis_list.append(api_dict)
-
-        # 构建导出数据
-        export_data = {
-            'version': '1.0',
-            'exported_at': datetime.utcnow().isoformat(),
-            'config': config_dict,
-            'users': users_list,
-            'worker_apis': worker_apis_list
-        }
+        export_data = await ConfigTransferService.export_data(db)
 
         return JSONResponse(
             content=export_data,
             headers={
-                'Content-Disposition': 'attachment; filename="zk-admin-config.json"'
+                'Content-Disposition': (
+                    f'attachment; filename="{build_config_export_filename()}"'
+                )
             }
         )
     except Exception as e:
@@ -297,179 +258,41 @@ async def import_config(
     db: AsyncSession = Depends(get_db),
     session: DBSession = Depends(verify_session)
 ):
-    """导入系统配置和用户信息"""
+    """导入 2.0 安全配置，或兼容恢复旧版 1.0 明文配置。"""
     try:
-        # 验证版本
-        version = import_data.get('version')
-        if not version:
-            raise HTTPException(
-                status_code=400,
-                detail="无效的导入文件：缺少版本信息"
-            )
-
-        imported_configs = 0
-        imported_users = 0
-        updated_users = 0
-        imported_worker_apis = 0
-
-        # 配置键白名单：只允许导入已知的配置项，防止导入文件注入任意键
-        # （否则可能覆盖 admin_* 等敏感键或写入脏数据）
-        ALLOWED_CONFIG_KEYS = {
-            'clockin_api_url', 'clockin_api_token', 'default_worker_api_id',
-            'api_request_delay', 'clockin_type_delay',
-            'clockin_retry_count', 'clockin_retry_delay', 'clockin_timeout',
-            'clockin_rate_limit_delay',
-            'schedule_cron', 'schedule_enabled', 'schedule_timezone',
-            'schedule_retry_count', 'schedule_retry_delay',
-            'retention_days',
-        }
-
-        # 导入配置
-        config_data = import_data.get('config', {})
-        for key, value in config_data.items():
-            if key not in ALLOWED_CONFIG_KEYS:
-                logger.warning(f"导入配置：跳过未知键 {key!r}")
-                continue
-            # 查找现有配置
-            result = await db.execute(select(Config).where(Config.key == key))
-            config = result.scalar_one_or_none()
-
-            if config:
-                # 更新
-                config.value = str(value)
-                config.updated_at = datetime.utcnow()
-            else:
-                # 创建
-                config = Config(key=key, value=str(value))
-                db.add(config)
-            imported_configs += 1
-
-        # 导入用户信息
-        users_data = import_data.get('users', [])
-        for user_data in users_data:
-            username = user_data.get('username')
-            if not username:
-                continue
-
-            # 查找现有用户
-            result = await db.execute(select(User).where(User.username == username))
-            user = result.scalar_one_or_none()
-
-            if user:
-                # 更新现有用户
-                user.nickname = user_data.get('nickname', user.nickname)
-                user.enabled = user_data.get('enabled', user.enabled)
-                user.sports_comment_type = user_data.get('sports_comment_type', user.sports_comment_type)
-                user.daily_comment_type = user_data.get('daily_comment_type', user.daily_comment_type)
-                user.sports_comment_api = user_data.get('sports_comment_api')
-                user.daily_comment_api = user_data.get('daily_comment_api')
-                user.sports_image_type = user_data.get('sports_image_type', user.sports_image_type)
-                user.sports_image_provider = user_data.get('sports_image_provider')
-                user.sports_image_category = user_data.get('sports_image_category')
-                # 如果导入文件包含密码，则更新密码
-                password = user_data.get('password')
-                if password:
-                    user.password = password
-                # 不导入 clockin_count 和 last_clockin，保持原有数据
-                updated_users += 1
-            else:
-                # 创建新用户（如果提供了密码）
-                password = user_data.get('password')
-                if password:
-                    new_user = User(
-                        username=username,
-                        password=password,
-                        nickname=user_data.get('nickname'),
-                        enabled=user_data.get('enabled', True),
-                        sports_comment_type=user_data.get('sports_comment_type', 'preset'),
-                        daily_comment_type=user_data.get('daily_comment_type', 'preset'),
-                        sports_comment_api=user_data.get('sports_comment_api'),
-                        daily_comment_api=user_data.get('daily_comment_api'),
-                        sports_image_type=user_data.get('sports_image_type', 'none'),
-                        sports_image_provider=user_data.get('sports_image_provider'),
-                        sports_image_category=user_data.get('sports_image_category'),
-                        clockin_count=0
-                    )
-                    db.add(new_user)
-                    imported_users += 1
-                    logger.info(f"导入新用户: {username}")
-                else:
-                    logger.warning(f"用户 {username} 不存在且导入数据中没有密码，跳过创建")
-
-        # 导入执行器API配置
-        worker_apis_data = import_data.get('worker_apis', [])
-        if not isinstance(worker_apis_data, list):
-            logger.warning(f"worker_apis 数据格式错误，应为列表，实际为: {type(worker_apis_data)}")
-            worker_apis_data = []
-        for api_data in worker_apis_data:
-            url = api_data.get('url')
-            if not url:
-                logger.warning("跳过缺少url的执行器API配置")
-                continue
-
-            # 检查必填字段
-            name = api_data.get('name')
-            token = api_data.get('token')
-            if not name:
-                logger.warning(f"跳过缺少name的执行器API: {url}")
-                continue
-            if not token:
-                logger.warning(f"跳过缺少token的执行器API: {name}")
-                continue
-
-            try:
-                # 查找现有API（通过URL）
-                result = await db.execute(select(WorkerApi).where(WorkerApi.url == url))
-                api = result.scalar_one_or_none()
-
-                # 处理 enabled 字段 - 可能是字符串、整数或布尔值
-                enabled_value = api_data.get('enabled', True)
-                if isinstance(enabled_value, str):
-                    enabled_value = enabled_value.lower() in ('true', '1', 'yes', 'on')
-                elif isinstance(enabled_value, (int, float)):
-                    enabled_value = bool(enabled_value)
-                # 如果已经是布尔值，直接使用
-
-                if api:
-                    # 更新现有API
-                    api.name = name
-                    api.token = token
-                    api.enabled = enabled_value
-                    api.note = api_data.get('note')
-                    api.updated_at = datetime.utcnow()
-                    imported_worker_apis += 1
-                else:
-                    # 创建新API
-                    api = WorkerApi(
-                        name=name,
-                        url=url,
-                        token=token,
-                        enabled=enabled_value,
-                        note=api_data.get('note')
-                    )
-                    db.add(api)
-                    imported_worker_apis += 1
-            except Exception as e:
-                logger.error(f"导入执行器API失败 ({url}): {e}")
-                continue
-
-        await db.commit()
+        report = await ConfigTransferService.import_data(db, import_data)
 
         # 如果更新了定时任务配置，重新加载调度器
+        config_data = import_data.get('config', {}) if isinstance(import_data, dict) else {}
         if 'schedule_cron' in config_data or 'schedule_enabled' in config_data:
-            new_cron = config_data.get('schedule_cron', settings.schedule_cron)
-            new_enabled = config_data.get('schedule_enabled', True) == 'True'
-            await reload_clockin_job(new_cron, new_enabled)
+            result = await db.execute(
+                select(Config).where(
+                    Config.key.in_(['schedule_cron', 'schedule_enabled', 'schedule_timezone'])
+                )
+            )
+            stored = {item.key: item.value for item in result.scalars().all()}
+            new_cron = stored.get('schedule_cron', settings.schedule_cron)
+            new_enabled = ConfigTransferService._as_bool(
+                stored.get('schedule_enabled'),
+                default=settings.schedule_enabled,
+            )
+            timezone = stored.get('schedule_timezone', settings.schedule_timezone)
+            await reload_clockin_job(new_cron, new_enabled, timezone)
 
         return SuccessResponse(
             success=True,
-            message=f"导入成功：{imported_configs} 条配置，{imported_users} 个用户导入，{updated_users} 个用户更新，{imported_worker_apis} 个执行器API"
+            message=(
+                "导入完成。若使用旧版 1.0 明文文件，请立即删除原文件并确认 Worker Token 已轮换。"
+            ),
+            data=report,
         )
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"导入配置失败: {e}", exc_info=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        # 导入异常可能携带 SQL bound parameters，其中包含旧版明文密码或 Token。
+        # 只记录异常类型，绝不格式化异常对象或 traceback。
+        logger.error("导入配置失败（%s）", type(exc).__name__)
         await db.rollback()
         raise HTTPException(
             status_code=500,

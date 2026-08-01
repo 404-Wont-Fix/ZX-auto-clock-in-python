@@ -1,7 +1,7 @@
 """
 FastAPI 应用主入口
 """
-from fastapi import FastAPI, Request, Depends
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, Response, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,9 +11,9 @@ from datetime import datetime
 import logging
 
 from app.config import settings
-from app.core.database import init_db, close_db, AsyncSessionLocal
+from app.core.database import AsyncSessionLocal, close_db, get_db, init_db
 from app.core.scheduler import start_scheduler, stop_scheduler
-from sqlalchemy import select
+from sqlalchemy import select, text
 from app.models.database import Session as DBSession
 
 # 配置日志
@@ -39,9 +39,18 @@ async def lifespan(app: FastAPI):
     # 初始化数据库
     try:
         await init_db()
+        from app.services.content_source_service import ContentSourceService
+        from app.services.task_service import TaskOrchestrator
+        async with AsyncSessionLocal() as db:
+            await ContentSourceService.ensure_default_sources(db)
+            interrupted = await TaskOrchestrator.interrupt_stale_tasks(db)
+            if interrupted:
+                logger.warning("已将 %s 个遗留打卡任务标记为中断", interrupted)
         logger.info("数据库初始化完成")
-    except Exception as e:
-        logger.error(f"数据库初始化失败: {e}")
+    except Exception as exc:
+        logger.error("数据库初始化失败（%s），拒绝启动", type(exc).__name__)
+        await close_db()
+        raise
 
     # 启动调度器
     try:
@@ -161,7 +170,7 @@ async def dashboard(request: Request):
 
 # ==================== API 路由 ====================
 
-from app.api import auth, users, clockin, config, maintenance
+from app.api import auth, users, clockin, config, content_sources, dashboard, maintenance
 from app.api import worker_api
 
 # 认证路由（登录/登出不需要 token 验证）
@@ -181,6 +190,12 @@ app.include_router(maintenance.router)
 
 # Worker API 管理路由
 app.include_router(worker_api.router)
+
+# 内容源管理路由
+app.include_router(content_sources.router)
+
+# 后台总览路由
+app.include_router(dashboard.router)
 
 
 # ==================== 中间件：Token 验证 ====================
@@ -202,12 +217,18 @@ async def verify_token_middleware(request: Request, call_next):
 # ==================== 健康检查 ====================
 
 @app.get("/health")
-async def health_check():
-    """健康检查端点"""
+async def health_check(db=Depends(get_db)):
+    """同时验证进程与 SQLite 可用性的容器健康检查端点。"""
+    try:
+        await db.execute(text("SELECT 1"))
+    except Exception as exc:
+        logger.warning("健康检查数据库不可用")
+        raise HTTPException(status_code=503, detail="service unavailable") from exc
     return {
         "status": "healthy",
         "service": "zk-admin",
-        "version": "2.0.0"
+        "version": "2.0.0",
+        "database": "ready",
     }
 
 

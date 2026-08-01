@@ -1,7 +1,7 @@
 """
 应用配置管理
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator
 from typing import List
 import json
@@ -12,6 +12,12 @@ logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     """应用配置"""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
 
     # 应用基础配置
     app_name: str = "ZK Admin"
@@ -67,11 +73,6 @@ class Settings(BaseSettings):
     # CORS 配置
     cors_origins: List[str] = ["http://localhost:8000", "http://localhost:3000"]
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-
     @model_validator(mode='after')
     def _validate_security_defaults(self):
         """生产环境禁止使用默认/空的安全凭据，避免 .env 缺失时以弱凭据裸奔。
@@ -89,6 +90,10 @@ class Settings(BaseSettings):
             if self.admin_password in ('', 'admin'):
                 raise ValueError(
                     "生产环境必须在 .env 中设置强管理员密码（不能为空或 admin）。"
+                )
+            if not self.admin_username.strip():
+                raise ValueError(
+                    "生产环境必须在 .env 中设置非空的 ADMIN_USERNAME。"
                 )
             if self.admin_path in ('', 'admin'):
                 logger.warning(

@@ -145,13 +145,18 @@ class WorkerApiService:
         # 构建更新数据
         update_data = {}
         for field, value in updates.model_dump(exclude_unset=True).items():
+            if value is None:
+                continue
             setattr(api, field, value)
             update_data[field] = value
 
         await db.commit()
         await db.refresh(api)
 
-        logger.info(f"更新 Worker API: {api.name} - {update_data}")
+        safe_fields = sorted(field for field in update_data if field != 'token')
+        if 'token' in update_data:
+            safe_fields.append('token_configured')
+        logger.info("更新 Worker API: %s - fields=%s", api.name, safe_fields)
         return api
 
     @staticmethod

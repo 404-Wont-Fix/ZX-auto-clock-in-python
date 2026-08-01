@@ -88,12 +88,17 @@ class ClockinService:
                     if attempt > 0:
                         logger.info(f"[用户 {user.username}] 重试第 {attempt} 次")
 
-                    # 获取备注内容
-                    daily_comment = await PoetryService.get_daily_comment(user)
-                    sports_comment = await PoetryService.get_sports_comment(user)
-
-                    # 获取图片
-                    image_data = await PoetryService.get_sports_image(user)
+                    # 获取受控内容源结果；服务会记录实际来源健康并自动降级。
+                    daily_selection = await PoetryService.get_daily_comment_selection(db, user)
+                    sports_selection = await PoetryService.get_sports_comment_selection(db, user)
+                    image_selection = await PoetryService.get_sports_image_selection(db, user)
+                    daily_comment = daily_selection.value or "今日学习内容总结，收获满满！"
+                    sports_comment = sports_selection.value or "已运动！"
+                    image_data = (
+                        {"url": image_selection.value, "use_cw": False}
+                        if image_selection.value
+                        else None
+                    )
 
                     # 构建请求
                     url = f"{api_url}/clockin"
@@ -195,10 +200,10 @@ class ClockinService:
                     result['daily_comment_source'] = user.daily_comment_type
 
                     # API 使用信息
-                    result['sports_comment_api'] = user.sports_comment_api if user.sports_comment_type == 'api' else None
-                    result['daily_comment_api'] = user.daily_comment_api if user.daily_comment_type == 'api' else None
+                    result['sports_comment_api'] = sports_selection.source_key if user.sports_comment_type == 'api' else None
+                    result['daily_comment_api'] = daily_selection.source_key if user.daily_comment_type == 'api' else None
                     result['sports_image_type'] = user.sports_image_type
-                    result['sports_image_provider'] = user.sports_image_provider
+                    result['sports_image_provider'] = image_selection.source_key if user.sports_image_type == 'api' else None
                     result['sports_image_category'] = user.sports_image_category
 
                     # 重新计算整体成功状态（覆盖外部 API 的 success 字段）
@@ -289,7 +294,8 @@ class ClockinService:
         result: Dict
     ) -> ClockinResult:
         """保存打卡结果（带事务处理）"""
-        date = datetime.utcnow().strftime('%Y-%m-%d')
+        beijing_tz = timezone(timedelta(hours=8))
+        date = datetime.now(timezone.utc).astimezone(beijing_tz).date().isoformat()
         timestamp = result.get('timestamp', datetime.utcnow().isoformat())
 
         # 构建详情 JSON

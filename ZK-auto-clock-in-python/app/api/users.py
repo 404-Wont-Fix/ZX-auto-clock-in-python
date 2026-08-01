@@ -81,7 +81,13 @@ async def create_user(
         )
 
     # 创建用户
-    user = await UserService.create_user(db, user_data)
+    try:
+        user = await UserService.create_user(db, user_data)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        ) from e
 
     return SuccessResponse(
         success=True,

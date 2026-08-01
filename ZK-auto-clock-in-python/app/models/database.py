@@ -3,15 +3,31 @@ SQLAlchemy 数据库模型定义
 """
 from sqlalchemy import Column, String, Boolean, Integer, Text, DateTime, ForeignKey, Index
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from app.core.database import Base
 import uuid
 import json
+import hashlib
 
 
 def generate_uuid():
     """生成 UUID"""
     return str(uuid.uuid4())
+
+
+def utc_now():
+    """返回与现有 SQLite DateTime 字段兼容的 UTC naive 时间。"""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def mask_secret(value):
+    """短值完全隐藏，长值只保留少量尾字符。"""
+    if not value:
+        return ''
+    value = str(value)
+    if len(value) <= 8:
+        return "••••••••"
+    return f"••••{value[-4:]}"
 
 
 class User(Base):
@@ -38,7 +54,7 @@ class User(Base):
     daily_comment_api = Column(String, default='poetry_all')
 
     # 统计信息
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
     last_clockin = Column(DateTime)
     clockin_count = Column(Integer, default=0)
 
@@ -63,6 +79,7 @@ class User(Base):
             'daily_comment_type': self.daily_comment_type,
             'custom_daily_comment': self.custom_daily_comment or '',
             'daily_comment_api': self.daily_comment_api,
+            'password_configured': bool(self.password),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'last_clockin': self.last_clockin.isoformat() if self.last_clockin else None,
             'clockin_count': self.clockin_count,
@@ -106,7 +123,7 @@ class ClockinResult(Base):
     triggered_by = Column(String)  # manual/scheduled
     error = Column(String)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
     __table_args__ = (
         Index('idx_clockin_date', 'date'),
@@ -172,8 +189,8 @@ class DailySummary(Base):
 
     failed_users_json = Column(Text)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     __table_args__ = (
         Index('idx_summaries_date', 'date'),
@@ -203,7 +220,11 @@ class Task(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     task_type = Column(String, nullable=False, index=True)  # clockin/clockin_sub
-    status = Column(String, nullable=False, index=True)  # pending/running/completed/failed
+    status = Column(String, nullable=False, index=True)  # pending/running/completed/failed/interrupted
+    scope = Column(String, nullable=False, default='all', index=True)  # all/failed/users
+    target_date = Column(String, nullable=False, index=True)
+    user_ids_json = Column(Text, default='[]', nullable=False)
+    triggered_by = Column(String, default='manual', nullable=False)
 
     # 进度信息
     progress_total = Column(Integer, default=0)
@@ -218,8 +239,9 @@ class Task(Base):
     error = Column(String)
 
     # 时间戳
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now, index=True)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+    started_at = Column(DateTime)
     completed_at = Column(DateTime)
 
     __table_args__ = (
@@ -233,11 +255,17 @@ class Task(Base):
         progress_percent = 0
         if self.progress_total > 0:
             progress_percent = int((self.progress_current / self.progress_total) * 100)
+        elif self.status == 'completed':
+            progress_percent = 100
 
         return {
             'id': self.id,
             'task_type': self.task_type,
             'status': self.status,
+            'scope': self.scope,
+            'date': self.target_date,
+            'user_ids': self.user_ids,
+            'triggered_by': self.triggered_by,
             'progress': {
                 'total': self.progress_total,
                 'current': self.progress_current,
@@ -245,12 +273,30 @@ class Task(Base):
                 'failure': self.progress_failure,
                 'percent': progress_percent,
             },
-            'result': self.result_json,
+            'result': self.result,
             'error': self.error,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
         }
+
+    @property
+    def user_ids(self):
+        try:
+            value = json.loads(self.user_ids_json or '[]')
+            return value if isinstance(value, list) else []
+        except (TypeError, json.JSONDecodeError):
+            return []
+
+    @property
+    def result(self):
+        if not self.result_json:
+            return None
+        try:
+            return json.loads(self.result_json)
+        except (TypeError, json.JSONDecodeError):
+            return None
 
 
 class Config(Base):
@@ -260,7 +306,7 @@ class Config(Base):
     key = Column(String, primary_key=True)
     value = Column(String, nullable=False)
     description = Column(String)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     def to_dict(self):
         """转换为字典"""
@@ -278,7 +324,7 @@ class Session(Base):
 
     token = Column(String, primary_key=True)
     username = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
     expires_at = Column(DateTime, nullable=False, index=True)
 
     __table_args__ = (
@@ -317,8 +363,8 @@ class WorkerApi(Base):
     total_success = Column(Integer, default=0)  # 总成功次数
     total_failure = Column(Integer, default=0)  # 总失败次数
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     note = Column(String)  # 备注信息
 
     __table_args__ = (
@@ -332,7 +378,8 @@ class WorkerApi(Base):
             'id': self.id,
             'name': self.name,
             'url': self.url,
-            'token': self.token,
+            'token_configured': bool(self.token),
+            'token_masked': mask_secret(self.token),
             'enabled': self.enabled,
             'available': self.available,
             'last_check': self.last_check.isoformat() if self.last_check else None,
@@ -345,4 +392,121 @@ class WorkerApi(Base):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'note': self.note,
+        }
+
+
+class ContentSource(Base):
+    """受控的公网文字或图片内容源。"""
+    __tablename__ = 'content_sources'
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    key = Column(String, unique=True, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    source_type = Column(String, nullable=False, index=True)  # text/image
+    enabled = Column(Boolean, default=False, nullable=False, index=True)
+    archived = Column(Boolean, default=False, nullable=False, index=True)
+    priority = Column(Integer, default=100, nullable=False, index=True)
+
+    url_template = Column(String, nullable=False)
+    query_params_json = Column(Text, default='{}', nullable=False)
+    parse_mode = Column(String, nullable=False)
+    value_path = Column(String)
+    attribution_path = Column(String)
+    categories_json = Column(Text, default='[]', nullable=False)
+    timeout_seconds = Column(Integer, default=10, nullable=False)
+    verified_config_hash = Column(String)
+
+    last_checked_at = Column(DateTime)
+    last_success_at = Column(DateTime)
+    last_failure_at = Column(DateTime)
+    latency_ms = Column(Integer)
+    consecutive_failures = Column(Integer, default=0, nullable=False)
+    last_error = Column(Text)
+
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    __table_args__ = (
+        Index('idx_content_source_type_priority', 'source_type', 'priority'),
+        Index('idx_content_source_state', 'enabled', 'archived'),
+    )
+
+    @property
+    def query_params(self):
+        try:
+            value = json.loads(self.query_params_json or '{}')
+            return value if isinstance(value, dict) else {}
+        except (TypeError, json.JSONDecodeError):
+            return {}
+
+    @property
+    def categories(self):
+        try:
+            value = json.loads(self.categories_json or '[]')
+            return value if isinstance(value, list) else []
+        except (TypeError, json.JSONDecodeError):
+            return []
+
+    @property
+    def config_fingerprint(self):
+        payload = {
+            'source_type': self.source_type,
+            'url_template': self.url_template,
+            'query_params': self.query_params,
+            'parse_mode': self.parse_mode,
+            'value_path': self.value_path,
+            'attribution_path': self.attribution_path,
+            'categories': self.categories,
+            'timeout_seconds': self.timeout_seconds,
+        }
+        serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        return hashlib.sha256(serialized.encode('utf-8')).hexdigest()
+
+    @property
+    def config_verified(self):
+        return bool(
+            self.verified_config_hash
+            and self.verified_config_hash == self.config_fingerprint
+        )
+
+    @property
+    def health_status(self):
+        if self.archived:
+            return 'archived'
+        if not self.enabled:
+            return 'disabled'
+        if (self.consecutive_failures or 0) >= 3:
+            return 'unavailable'
+        if (self.consecutive_failures or 0) > 0:
+            return 'degraded'
+        if self.last_success_at:
+            return 'healthy'
+        return 'unknown'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'key': self.key,
+            'name': self.name,
+            'source_type': self.source_type,
+            'enabled': self.enabled,
+            'archived': self.archived,
+            'priority': self.priority,
+            'url_template': self.url_template,
+            'query_params': self.query_params,
+            'parse_mode': self.parse_mode,
+            'value_path': self.value_path,
+            'attribution_path': self.attribution_path,
+            'categories': self.categories,
+            'timeout_seconds': self.timeout_seconds,
+            'config_verified': self.config_verified,
+            'health_status': self.health_status,
+            'last_checked_at': self.last_checked_at.isoformat() if self.last_checked_at else None,
+            'last_success_at': self.last_success_at.isoformat() if self.last_success_at else None,
+            'last_failure_at': self.last_failure_at.isoformat() if self.last_failure_at else None,
+            'latency_ms': self.latency_ms,
+            'consecutive_failures': self.consecutive_failures or 0,
+            'last_error': self.last_error,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

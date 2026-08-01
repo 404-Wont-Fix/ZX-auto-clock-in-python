@@ -1,9 +1,9 @@
 """
 Pydantic 模型定义（请求/响应验证）
 """
-from pydantic import BaseModel, Field, validator
-from typing import Optional, List, Dict, Any
-from datetime import datetime
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Optional, List, Dict, Any, Literal
+from datetime import date as DateValue, datetime
 
 
 # ==================== 认证相关 ====================
@@ -43,7 +43,8 @@ class UserBase(BaseModel):
     custom_daily_comment: Optional[str] = Field(None, max_length=500)
     daily_comment_api: str = "poetry_all"
 
-    @validator('username')
+    @field_validator('username')
+    @classmethod
     def validate_username(cls, v):
         """验证用户名"""
         import re
@@ -60,7 +61,7 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     """更新用户请求"""
     username: Optional[str] = Field(None, min_length=3, max_length=50)
-    password: Optional[str] = Field(None, min_length=6, max_length=100)
+    password: Optional[str] = Field(None, max_length=100)
     nickname: Optional[str] = Field(None, max_length=50)
     enabled: Optional[bool] = None
 
@@ -77,7 +78,8 @@ class UserUpdate(BaseModel):
     custom_daily_comment: Optional[str] = Field(None, max_length=500)
     daily_comment_api: Optional[str] = None
 
-    @validator('username')
+    @field_validator('username')
+    @classmethod
     def validate_username(cls, v):
         """更新时同样校验用户名字符集（与 UserBase 保持一致）"""
         if v is None:
@@ -87,6 +89,15 @@ class UserUpdate(BaseModel):
             raise ValueError('用户名只能包含中文、字母、数字和下划线')
         return v
 
+    @field_validator('password', mode='before')
+    @classmethod
+    def normalize_optional_password(cls, value):
+        if isinstance(value, str) and not value.strip():
+            return None
+        if value is not None and len(value) < 6:
+            raise ValueError('密码长度至少为 6 个字符')
+        return value
+
 
 class UserResponse(UserBase):
     """用户响应（不含密码——密码仅供服务端调用 worker 时使用，不回传客户端）"""
@@ -94,9 +105,9 @@ class UserResponse(UserBase):
     created_at: Optional[str] = None
     last_clockin: Optional[str] = None
     clockin_count: int = 0
+    password_configured: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserListResponse(BaseModel):
@@ -161,14 +172,21 @@ class ClockinResultResponse(BaseModel):
     error: Optional[str] = None
     created_at: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ClockinTriggerResponse(BaseModel):
     """触发打卡响应"""
     success: bool
     data: Dict[str, Any]
+
+
+class ClockinTaskCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    scope: Literal['all', 'failed', 'users']
+    date: Optional[DateValue] = None
+    user_ids: List[str] = Field(default_factory=list, max_length=50)
 
 
 class TaskProgress(BaseModel):
@@ -192,8 +210,7 @@ class TaskResponse(BaseModel):
     updated_at: Optional[str] = None
     completed_at: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ClockinResultsResponse(BaseModel):
@@ -229,6 +246,13 @@ class ConfigUpdateRequest(BaseModel):
     # 必须 >=1：retention_days=0 会让清理任务把今天之前的记录全删，叠加时区偏差可能误删当天
     retention_days: Optional[int] = Field(None, ge=1)
 
+    @field_validator('clockin_api_token', mode='before')
+    @classmethod
+    def normalize_optional_clockin_token(cls, value):
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
 
 class ConfigResponse(BaseModel):
     """配置响应"""
@@ -250,10 +274,17 @@ class WorkerApiUpdate(BaseModel):
     """更新 Worker API 请求"""
     name: Optional[str] = Field(None, min_length=1, max_length=50)
     url: Optional[str] = Field(None, min_length=1)
-    token: Optional[str] = Field(None, min_length=1)
+    token: Optional[str] = Field(None, max_length=500)
     enabled: Optional[bool] = None
     available: Optional[bool] = None
     note: Optional[str] = Field(None, max_length=200)
+
+    @field_validator('token', mode='before')
+    @classmethod
+    def normalize_optional_token(cls, value):
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class WorkerApiResponse(BaseModel):
@@ -261,7 +292,8 @@ class WorkerApiResponse(BaseModel):
     id: str
     name: str
     url: str
-    token: str
+    token_configured: bool
+    token_masked: str
     enabled: bool
     available: bool
     last_check: Optional[str] = None
@@ -275,8 +307,7 @@ class WorkerApiResponse(BaseModel):
     updated_at: Optional[str] = None
     note: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WorkerApiListResponse(BaseModel):
@@ -292,11 +323,59 @@ class WorkerApiTestResponse(BaseModel):
     latency_ms: Optional[int] = None
 
 
+# ==================== 内容源相关 ====================
+
+class ContentSourceCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    key: str = Field(..., min_length=2, max_length=64)
+    name: str = Field(..., min_length=1, max_length=80)
+    source_type: Literal['text', 'image']
+    enabled: bool = False
+    priority: int = Field(100, ge=0, le=10000)
+    url_template: str = Field(..., min_length=9, max_length=2048)
+    query_params: Dict[str, Any] = Field(default_factory=dict)
+    parse_mode: Literal['json_text', 'plain_text', 'json_image', 'redirect_image']
+    value_path: Optional[str] = Field(None, max_length=200)
+    attribution_path: Optional[str] = Field(None, max_length=200)
+    categories: List[str] = Field(default_factory=list, max_length=100)
+    timeout_seconds: int = Field(10, ge=2, le=30)
+
+
+class ContentSourceUpdate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    name: Optional[str] = Field(None, min_length=1, max_length=80)
+    source_type: Optional[Literal['text', 'image']] = None
+    enabled: Optional[bool] = None
+    priority: Optional[int] = Field(None, ge=0, le=10000)
+    url_template: Optional[str] = Field(None, min_length=9, max_length=2048)
+    query_params: Optional[Dict[str, Any]] = None
+    parse_mode: Optional[Literal['json_text', 'plain_text', 'json_image', 'redirect_image']] = None
+    value_path: Optional[str] = Field(None, max_length=200)
+    attribution_path: Optional[str] = Field(None, max_length=200)
+    categories: Optional[List[str]] = Field(None, max_length=100)
+    timeout_seconds: Optional[int] = Field(None, ge=2, le=30)
+
+
+class ContentSourcePriorityItem(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    id: str
+    priority: int = Field(..., ge=0, le=10000)
+
+
+class ContentSourcePriorityUpdate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    items: List[ContentSourcePriorityItem] = Field(..., min_length=1, max_length=200)
+
+
 # ==================== 维护相关 ====================
 
 class CleanupRequest(BaseModel):
     """清理请求"""
-    days: Optional[int] = 7
+    days: int = Field(7, ge=1, le=3650)
 
 
 class CleanupResponse(BaseModel):

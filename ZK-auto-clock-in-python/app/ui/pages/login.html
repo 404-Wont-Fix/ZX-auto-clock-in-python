@@ -1,36 +1,49 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>登录 - ZX 打卡系统</title>
-    <link rel="stylesheet" href="/assets/login.css?v=8.0">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>登录 · ZX Admin</title>
+    <link rel="stylesheet" href="/assets/login.css?v=9.0">
 </head>
 <body>
-    <div class="login-container">
-        <div class="login-card">
-            <div class="login-logo">ZX</div>
-            <div class="login-header">
-                <h1>欢迎回来</h1>
-                <p>请登录以访问管理面板</p>
+    <main class="login-shell">
+        <section class="login-context" aria-label="控制台介绍">
+            <div class="context-brand"><span>ZX</span><strong>Admin Console</strong></div>
+            <div class="context-copy">
+                <p class="eyebrow">Single node operations</p>
+                <h1>让每次执行<br>都清晰可见。</h1>
+                <p>集中观察今日状态、处理失败用户，并维护 Worker 与内容来源。</p>
             </div>
-            <div class="error" id="errorMessage"></div>
-            <form onsubmit="handleLogin(event)">
-                <div class="form-group">
-                    <label class="form-label">用户名</label>
-                    <input type="text" class="form-input" id="username" placeholder="请输入用户名" required autocomplete="username">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">密码</label>
-                    <input type="password" class="form-input" id="password" placeholder="请输入密码" required autocomplete="current-password">
-                </div>
-                <button type="submit" class="btn" id="loginBtn">登录</button>
-            </form>
-            <div class="login-footer">
-                ZX 自动打卡系统 v1.0
+            <ul class="context-points">
+                <li><i></i><span>持久任务进度与失败补救</span></li>
+                <li><i></i><span>受控的公网 HTTPS 内容源</span></li>
+                <li><i></i><span>单管理员、单进程运行模型</span></li>
+            </ul>
+        </section>
+
+        <section class="login-panel">
+            <div class="login-form-wrap">
+                <p class="eyebrow">Administrator access</p>
+                <h2>登录控制台</h2>
+                <p class="login-subtitle">使用管理员凭据继续</p>
+                <div class="error" id="errorMessage" role="alert" aria-live="polite"></div>
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label for="username">用户名</label>
+                        <input type="text" id="username" placeholder="请输入用户名" required autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">密码</label>
+                        <input type="password" id="password" placeholder="请输入密码" required autocomplete="current-password">
+                    </div>
+                    <button type="submit" id="loginBtn">登录</button>
+                </form>
+                <p class="login-meta">会话有效期 24 小时 · ZX Admin 2.0</p>
             </div>
-        </div>
-    </div>
-    <script src="/assets/login.js?v=8.0"></script>
+        </section>
+    </main>
+    <script src="/assets/login.js?v=9.0" defer></script>
 </body>
 </html>

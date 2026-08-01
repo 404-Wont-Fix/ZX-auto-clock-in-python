@@ -1,0 +1,133 @@
+{
+  "adr_id": "ADR-0001",
+  "title": "Evolve the existing Admin boundaries for controlled content sources, durable clockin tasks and a native modular UI",
+  "status": "accepted",
+  "supersedes": [],
+  "superseded_by": null,
+  "context": "At upstream main commit 924e9d5 the Admin already has FastAPI routes and services, SQLite Task persistence primitives, a sidebar Hash-routed SPA with drawers, and single-process Docker Compose. However, third-party content providers remain hard-coded, several provider choices are dead or unsafe to follow without address validation, TaskService is not connected to clockin orchestration, active progress is memory-only, Worker responses and version 1.0 exports expose secrets, and the browser is a Tailwind/DaisyUI CDN page with one monolithic script. The approved redesign must reuse rather than duplicate working boundaries, preserve the external Worker clockin contract and exclude all ai.cqzuxia.com platform behavior.",
+  "known_evidence": [
+    {
+      "source_type": "architecture_evidence",
+      "location": "docs/architecture/architecture-evidence.json",
+      "summary": "Validated module, dependency, public contract and rollback evidence for upstream main 924e9d5."
+    },
+    {
+      "source_type": "code_reference",
+      "location": "ZK-auto-clock-in-python/app/models/database.py",
+      "summary": "The baseline already contains Task and WorkerApi models but no ContentSource model."
+    },
+    {
+      "source_type": "code_reference",
+      "location": "ZK-auto-clock-in-python/app/ui/pages/index.html",
+      "summary": "The baseline already contains a sidebar, Hash navigation and drawers but loads Tailwind and DaisyUI from CDN."
+    },
+    {
+      "source_type": "live_probe",
+      "location": "2026-07-31 planning session",
+      "summary": "cenguigui returned HTTP 400, the old Yuanmeng endpoint reported shutdown, KLapi and bing.img.run failed TLS, while QZQI and official Bing UHD were reachable."
+    }
+  ],
+  "options": [
+    {
+      "name": "Evolve existing boundaries with controlled database adapters",
+      "summary": "Add ContentSource persistence and a dedicated content service, extend the existing Task model/service into one orchestrator, add thin APIs, and replace the current browser assets with native ES modules.",
+      "tradeoffs": [
+        "Changes schema and internal Admin APIs across several modules",
+        "Reuses the current FastAPI, service, AsyncSession, scheduler and Worker boundaries",
+        "Allows provider replacement without deployment while preventing arbitrary request definitions"
+      ]
+    },
+    {
+      "name": "Patch hard-coded provider URLs and current page",
+      "summary": "Replace dead URLs and restyle the existing monolithic Tailwind/DaisyUI page.",
+      "tradeoffs": [
+        "Smallest immediate diff",
+        "Does not provide provider management, durable progress, secure fallback or the approved modular redesign"
+      ]
+    },
+    {
+      "name": "Introduce a frontend framework and external queue",
+      "summary": "Use a framework build chain and a separate durable job system.",
+      "tradeoffs": [
+        "Provides mature component and queue ecosystems",
+        "Adds dependencies, services and operational cost unjustified for one administrator and fewer than 50 users"
+      ]
+    },
+    {
+      "name": "Allow arbitrary HTTP request definitions",
+      "summary": "Let administrators configure methods, headers, bodies and expressions.",
+      "tradeoffs": [
+        "Maximum provider flexibility",
+        "Creates unacceptable SSRF, secret exposure and arbitrary behavior risk"
+      ]
+    }
+  ],
+  "decision": {
+    "summary": "Evolve the existing Admin boundaries: persist controlled public-HTTPS content adapters and health, turn the existing Task persistence into the single clockin orchestration contract, expose thin authenticated APIs, replace current UI assets with native HTML/CSS/ES modules, and retain the existing single Admin process and external Worker request contract.",
+    "rationale": "This is the smallest architecture that meets console-managed providers, reliable progress, failure-only recovery and a complete UI redesign without duplicating TaskService, creating a second deployment stack, importing persistence into the browser or changing excluded platform adapters.",
+    "guardian_decision": "ALLOW"
+  },
+  "rejected_options": [
+    {
+      "name": "Patch hard-coded provider URLs and current page",
+      "reason": "It does not meet the management, health, durable task or complete interaction redesign requirements."
+    },
+    {
+      "name": "Introduce a frontend framework and external queue",
+      "reason": "It violates the approved framework-free, single-process operating model and scale assumptions."
+    },
+    {
+      "name": "Allow arbitrary HTTP request definitions",
+      "reason": "It exceeds the template boundary and creates avoidable SSRF and secret risk."
+    },
+    {
+      "name": "Create a second task table or orchestration service beside TaskService",
+      "reason": "The baseline already has persistence primitives; duplicating them would split progress and conflict control."
+    }
+  ],
+  "impact_scope": [
+    "Admin SQLite schema and response schemas",
+    "Content retrieval and scheduler health probes",
+    "Clockin orchestration and Admin task APIs",
+    "Admin browser assets and internal routes",
+    "Secret handling, import/export and deployment documentation"
+  ],
+  "constraints": [
+    "Do not change ai.cqzuxia.com login, upload, home, sports or daily adapter behavior.",
+    "Content providers are public HTTPS GET only and every resolved address and redirect target must be validated.",
+    "The browser may depend only on authenticated Admin HTTP APIs, never SQLAlchemy or provider endpoints directly.",
+    "Routes remain thin; provider selection and task orchestration belong to services using independent AsyncSession instances for background work.",
+    "The existing Task persistence is evolved rather than duplicated, and only one pending or running clockin task may exist.",
+    "Only one Admin process may own APScheduler and in-process background tasks.",
+    "No production frontend framework, runtime CDN dependency or build step.",
+    "Existing user and Worker secrets stay server-side; empty sensitive updates preserve the stored value.",
+    "Rollout uses a fresh SQLite database plus legacy version 1.0 file import, not in-place migration."
+  ],
+  "verification": [
+    "Validate architecture evidence and ADR schemas.",
+    "Run Python unit and API integration tests with mocked external HTTP.",
+    "Run JavaScript syntax checks, Node unit tests and Playwright desktop/mobile flows.",
+    "Validate and build Docker Compose, restart the container and verify health and database persistence.",
+    "Run live content-source probes separately without real clockin accounts."
+  ],
+  "rollback_or_migration": [
+    "Use a fresh SQLite database for the new deployment and import a legacy version 1.0 configuration file.",
+    "Revert content, task, UI, security and deployment commits independently in reverse order.",
+    "Discard the candidate database and redeploy the previous Admin revision if rollout fails.",
+    "Never restore or reuse a leaked Worker token during rollback."
+  ],
+  "links": {
+    "issues": [],
+    "files": [
+      "docs/superpowers/specs/2026-07-31-admin-redesign-content-sources-design.md",
+      "docs/architecture/architecture-evidence.json",
+      "ZK-auto-clock-in-python/app/models/database.py",
+      "ZK-auto-clock-in-python/app/services/task_service.py",
+      "ZK-auto-clock-in-python/app/services/poetry_service.py",
+      "ZK-auto-clock-in-python/app/ui/pages/index.html"
+    ],
+    "modules": ["admin-ui", "admin-api", "admin-services", "admin-persistence", "clockin-worker"],
+    "tests": ["ZK-auto-clock-in-python/tests", "tests/frontend", "tests/e2e"],
+    "adrs": []
+  }
+}

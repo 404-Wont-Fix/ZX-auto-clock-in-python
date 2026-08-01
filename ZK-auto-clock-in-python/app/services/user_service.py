@@ -7,7 +7,7 @@ from typing import List, Optional
 from datetime import datetime
 import re
 
-from app.models.database import User
+from app.models.database import ContentSource, User
 from app.models.schemas import UserCreate, UserUpdate
 
 
@@ -33,8 +33,37 @@ class UserService:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def _validate_image_policy(
+        db: AsyncSession,
+        image_type: Optional[str],
+        provider_key: Optional[str],
+        category: Optional[str],
+    ) -> None:
+        if image_type != "api":
+            return
+        source_result = await db.execute(
+            select(ContentSource).where(
+                ContentSource.key == provider_key,
+                ContentSource.source_type == "image",
+                ContentSource.archived.is_(False),
+            )
+        )
+        source = source_result.scalar_one_or_none()
+        if not source:
+            raise ValueError("所选图片内容源不存在或已归档")
+        selected_category = category or "random"
+        if selected_category != "random" and selected_category not in source.categories:
+            raise ValueError("图片分类不在所选内容源的允许列表中")
+
+    @staticmethod
     async def create_user(db: AsyncSession, user_data: UserCreate) -> User:
         """创建新用户"""
+        await UserService._validate_image_policy(
+            db,
+            user_data.sports_image_type,
+            user_data.sports_image_provider,
+            user_data.sports_image_category,
+        )
         # 检查用户名是否已存在
         existing = await UserService.get_user_by_username(db, user_data.username)
         if existing:
@@ -83,6 +112,15 @@ class UserService:
         for field, value in updates.model_dump(exclude_unset=True).items():
             if value is not None:
                 update_data[field] = value
+
+        image_fields = {"sports_image_type", "sports_image_provider", "sports_image_category"}
+        if image_fields.intersection(update_data):
+            await UserService._validate_image_policy(
+                db,
+                update_data.get("sports_image_type", user.sports_image_type),
+                update_data.get("sports_image_provider", user.sports_image_provider),
+                update_data.get("sports_image_category", user.sports_image_category),
+            )
 
         if update_data:
             await db.execute(

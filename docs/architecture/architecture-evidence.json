@@ -1,0 +1,390 @@
+{
+  "architecture_evidence_version": "1",
+  "project": {
+    "name": "ZK-auto-clock-in-python",
+    "evidence_sources": [
+      {
+        "source_type": "other",
+        "location": "git:upstream/main@924e9d5",
+        "summary": "User-confirmed implementation baseline from TianJiaJi/ZK-auto-clock-in-python main."
+      },
+      {
+        "source_type": "readme",
+        "location": "CLAUDE.md",
+        "summary": "Documents the intended monorepo split, FastAPI service pattern, browser API boundary and Worker contract; known stale statements are recorded as unknowns rather than treated as code truth."
+      },
+      {
+        "source_type": "code_reference",
+        "location": "ZK-auto-clock-in-python/app/main.py",
+        "summary": "FastAPI composition root wiring routers, static assets, database and scheduler lifecycle."
+      },
+      {
+        "source_type": "dependency_config",
+        "location": "ZK-auto-clock-in-python/requirements.txt",
+        "summary": "Defines the Python runtime dependencies used by Admin."
+      }
+    ],
+    "unknowns": [
+      "The repository has no ownership file, module manifest or earlier ADR directory.",
+      "The deployed Admin and Worker revisions are not represented in the repository.",
+      "No committed automated test suite exists at baseline commit 924e9d5.",
+      "CLAUDE.md and README.md contain stale multi-worker and response-shape guidance that conflicts with current code."
+    ]
+  },
+  "modules": [
+    {
+      "module_id": "admin-ui",
+      "path_patterns": ["ZK-auto-clock-in-python/app/ui/**"],
+      "responsibility": "Render the administration experience and consume authenticated FastAPI JSON APIs.",
+      "architecture_type": "Presentation",
+      "ownership": {
+        "owner": "project maintainer",
+        "source": "User explicitly approved the Admin redesign in this repository."
+      },
+      "allowed_dependencies": [
+        {
+          "target": "admin-api",
+          "reason": "The browser UI consumes authenticated HTTP routes and has no database access.",
+          "evidence_sources": [
+            {
+              "source_type": "call_graph",
+              "location": "ZK-auto-clock-in-python/app/ui/assets/js/core/api.js:14",
+              "summary": "The current browser data path uses the shared apiRequest adapter to call authenticated /api endpoints."
+            }
+          ]
+        }
+      ],
+      "forbidden_dependencies": [
+        {
+          "target": "admin-persistence",
+          "reason": "Presentation must not import SQLAlchemy models or open database sessions.",
+          "evidence_sources": [
+            {
+              "source_type": "code_reference",
+              "location": "ZK-auto-clock-in-python/app/main.py",
+              "summary": "The server owns persistence and serves browser files across HTTP."
+            }
+          ]
+        }
+      ],
+      "public_contracts": [
+        {
+          "name": "Admin browser interface",
+          "contract_type": "HTML CSS JavaScript UI",
+          "location": "ZK-auto-clock-in-python/app/ui/",
+          "stability": "internal",
+          "evidence_sources": [
+            {
+              "source_type": "code_reference",
+              "location": "ZK-auto-clock-in-python/app/ui/pages/index.html",
+              "summary": "Single /dashboard SPA entry with Hash navigation and drawer markup."
+            }
+          ]
+        }
+      ],
+      "data_boundaries": ["Authenticated /api JSON responses", "Browser-local route, filter and drawer state"],
+      "runtime_entries": ["ZK-auto-clock-in-python/app/ui/pages/index.html", "ZK-auto-clock-in-python/app/ui/assets/js/dashboard.js"],
+      "evidence_sources": [
+        {
+          "source_type": "code_reference",
+          "location": "ZK-auto-clock-in-python/app/ui/pages/index.html",
+          "summary": "The current SPA loads local CSS and native ES modules without a production build chain or runtime component CDN."
+        }
+      ],
+      "confidence": 0.94,
+      "unknowns": ["No documented browser support matrix exists."],
+      "impact_scope": ["Navigation", "Forms", "Dashboard", "Responsive layout", "Accessibility", "API error feedback"],
+      "verification_commands": ["node --test tests/frontend/*.test.mjs", "npx playwright test"],
+      "rollback": {
+        "strategy": "Revert the UI commit independently.",
+        "commands": ["git revert <ui-commit>"]
+      }
+    },
+    {
+      "module_id": "admin-api",
+      "path_patterns": ["ZK-auto-clock-in-python/app/api/**", "ZK-auto-clock-in-python/app/main.py"],
+      "responsibility": "Authenticate administrators and expose HTTP contracts for Admin application capabilities.",
+      "architecture_type": "Application Adapter",
+      "ownership": {
+        "owner": "project maintainer",
+        "source": "User explicitly approved new Admin API contracts."
+      },
+      "allowed_dependencies": [
+        {
+          "target": "admin-services",
+          "reason": "Routes delegate business orchestration and validation to services.",
+          "evidence_sources": [
+            {
+              "source_type": "import_graph",
+              "location": "ZK-auto-clock-in-python/app/api/clockin.py",
+              "summary": "Clockin routes import ClockinService and ActiveTaskService."
+            }
+          ]
+        },
+        {
+          "target": "admin-persistence",
+          "reason": "FastAPI dependencies provide AsyncSession and response schemas to routes.",
+          "evidence_sources": [
+            {
+              "source_type": "import_graph",
+              "location": "ZK-auto-clock-in-python/app/api/users.py",
+              "summary": "Routes depend on get_db, database Session and Pydantic request/response models."
+            }
+          ]
+        }
+      ],
+      "forbidden_dependencies": [
+        {
+          "target": "admin-ui",
+          "reason": "API application behavior must not depend on browser presentation modules.",
+          "evidence_sources": [
+            {
+              "source_type": "code_reference",
+              "location": "ZK-auto-clock-in-python/app/main.py",
+              "summary": "The composition root serves static files while routers remain separate Python modules."
+            }
+          ]
+        }
+      ],
+      "public_contracts": [
+        {
+          "name": "Authenticated Admin API",
+          "contract_type": "FastAPI JSON API",
+          "location": "ZK-auto-clock-in-python/app/api/",
+          "stability": "internal",
+          "evidence_sources": [
+            {
+              "source_type": "code_reference",
+              "location": "ZK-auto-clock-in-python/app/main.py:168",
+              "summary": "Composition root registers all Admin routers."
+            }
+          ]
+        }
+      ],
+      "data_boundaries": ["Authenticated JSON requests and responses", "Application service calls"],
+      "runtime_entries": ["app.main:app", "/api/*"],
+      "evidence_sources": [
+        {
+          "source_type": "code_reference",
+          "location": "ZK-auto-clock-in-python/app/api/",
+          "summary": "Thin FastAPI route modules define the current HTTP surface."
+        }
+      ],
+      "confidence": 0.93,
+      "unknowns": ["No external Admin API compatibility policy exists."],
+      "impact_scope": ["Content source API", "Persistent task API", "Dashboard summary", "Secret redaction", "Import and export"],
+      "verification_commands": ["python -m pytest -q"],
+      "rollback": {
+        "strategy": "Revert API commits together with their schema/service commits before deployment.",
+        "commands": ["git revert <admin-api-commit>"]
+      }
+    },
+    {
+      "module_id": "admin-services",
+      "path_patterns": ["ZK-auto-clock-in-python/app/services/**", "ZK-auto-clock-in-python/app/core/scheduler.py"],
+      "responsibility": "Orchestrate users, content providers, Worker calls, task progress, scheduling and health state.",
+      "architecture_type": "Application Service",
+      "ownership": {
+        "owner": "project maintainer",
+        "source": "User explicitly approved content and task service evolution while excluding upstream platform adapters."
+      },
+      "allowed_dependencies": [
+        {
+          "target": "admin-persistence",
+          "reason": "Services query and update SQLAlchemy models through AsyncSession.",
+          "evidence_sources": [
+            {
+              "source_type": "import_graph",
+              "location": "ZK-auto-clock-in-python/app/services/clockin_service.py",
+              "summary": "ClockinService imports database models and receives AsyncSession."
+            }
+          ]
+        },
+        {
+          "target": "clockin-worker",
+          "reason": "ClockinService invokes the configured Worker HTTP API.",
+          "evidence_sources": [
+            {
+              "source_type": "call_graph",
+              "location": "ZK-auto-clock-in-python/app/services/clockin_service.py:27",
+              "summary": "call_clockin_api builds and sends the Worker /clockin request."
+            }
+          ]
+        },
+        {
+          "target": "public-content-providers",
+          "reason": "Content services fetch public text and image data over HTTPS.",
+          "evidence_sources": [
+            {
+              "source_type": "code_reference",
+              "location": "ZK-auto-clock-in-python/app/services/poetry_service.py",
+              "summary": "Baseline provider integrations are hard-coded in PoetryService."
+            }
+          ]
+        }
+      ],
+      "forbidden_dependencies": [
+        {
+          "target": "admin-ui",
+          "reason": "Services must not depend on browser state or presentation.",
+          "evidence_sources": [
+            {
+              "source_type": "import_graph",
+              "location": "ZK-auto-clock-in-python/app/services/",
+              "summary": "Baseline service imports contain no UI modules."
+            }
+          ]
+        }
+      ],
+      "public_contracts": [
+        {
+          "name": "Worker clockin request",
+          "contract_type": "External HTTPS JSON request",
+          "location": "ZK-auto-clock-in-python/app/services/clockin_service.py:27",
+          "stability": "external",
+          "evidence_sources": [
+            {
+              "source_type": "code_reference",
+              "location": "clockin-worker/worker.js",
+              "summary": "Worker accepts username, password, clockin_type and options at /clockin."
+            }
+          ]
+        }
+      ],
+      "data_boundaries": ["SQLite application state", "Public content responses", "Worker HTTP requests and responses"],
+      "runtime_entries": ["ClockinService", "APScheduler scheduled_clockin_job", "content health probe job"],
+      "evidence_sources": [
+        {
+          "source_type": "code_reference",
+          "location": "ZK-auto-clock-in-python/app/services/task_service.py",
+          "summary": "The persistent Task service is the shared orchestration contract for manual, per-user, failed-only and scheduled clockin tasks."
+        },
+        {
+          "source_type": "code_reference",
+          "location": "ZK-auto-clock-in-python/app/core/scheduler.py",
+          "summary": "Single-process APScheduler dispatches through the persistent task orchestrator and runs hourly content-source health probes."
+        }
+      ],
+      "confidence": 0.92,
+      "unknowns": ["Live third-party content availability is time-varying and requires release-time probing."],
+      "impact_scope": ["Content fetching", "Health and fallback", "Clockin orchestration", "Persistent progress", "Scheduled jobs"],
+      "verification_commands": ["python -m pytest -q"],
+      "rollback": {
+        "strategy": "Revert content and task service commits independently; retain the old Worker contract.",
+        "commands": ["git revert <service-commit>"]
+      }
+    },
+    {
+      "module_id": "admin-persistence",
+      "path_patterns": ["ZK-auto-clock-in-python/app/models/**", "ZK-auto-clock-in-python/app/core/database.py"],
+      "responsibility": "Define SQLite models, validation schemas, engine and AsyncSession lifecycle.",
+      "architecture_type": "Persistence Infrastructure",
+      "ownership": {
+        "owner": "project maintainer",
+        "source": "User approved a fresh SQLite deployment and legacy file import instead of in-place migration."
+      },
+      "allowed_dependencies": [],
+      "forbidden_dependencies": [
+        {
+          "target": "admin-ui",
+          "reason": "Persistence definitions cannot depend on browser presentation.",
+          "evidence_sources": [
+            {
+              "source_type": "import_graph",
+              "location": "ZK-auto-clock-in-python/app/models/database.py",
+              "summary": "Database models depend on SQLAlchemy and the shared Base only."
+            }
+          ]
+        }
+      ],
+      "public_contracts": [
+        {
+          "name": "Admin SQLite schema",
+          "contract_type": "SQLAlchemy model schema",
+          "location": "ZK-auto-clock-in-python/app/models/database.py",
+          "stability": "internal",
+          "evidence_sources": [
+            {
+              "source_type": "code_reference",
+              "location": "ZK-auto-clock-in-python/app/core/database.py:48",
+              "summary": "init_db creates all registered metadata tables without migrations."
+            }
+          ]
+        }
+      ],
+      "data_boundaries": ["SQLite database file", "Pydantic request and response validation"],
+      "runtime_entries": ["init_db", "AsyncSessionLocal", "get_db"],
+      "evidence_sources": [
+        {
+          "source_type": "code_reference",
+          "location": "ZK-auto-clock-in-python/app/models/database.py",
+          "summary": "Defines the current User, ClockinResult, DailySummary, Task, ContentSource, Config, Session and WorkerApi tables."
+        }
+      ],
+      "confidence": 0.95,
+      "unknowns": ["No schema migration framework is configured."],
+      "impact_scope": ["ContentSource table", "Task fields and statuses", "Sensitive response schemas"],
+      "verification_commands": ["python -m pytest -q"],
+      "rollback": {
+        "strategy": "Use a fresh database for rollout; discard the candidate database and revert schema commits if rollback is required.",
+        "commands": ["git revert <schema-commit>"]
+      }
+    },
+    {
+      "module_id": "clockin-worker",
+      "path_patterns": ["clockin-worker/**"],
+      "responsibility": "Execute upstream login, upload and clockin operations behind an authenticated edge API.",
+      "architecture_type": "External Service Adapter",
+      "ownership": {
+        "owner": "project maintainer",
+        "source": "User approved repository secret cleanup only; platform behavior is explicitly out of scope."
+      },
+      "allowed_dependencies": [],
+      "forbidden_dependencies": [
+        {
+          "target": "admin-persistence",
+          "reason": "The Worker is stateless and communicates with Admin over HTTP only.",
+          "evidence_sources": [
+            {
+              "source_type": "code_reference",
+              "location": "clockin-worker/worker.js",
+              "summary": "Worker fetch handler has no Admin database dependency."
+            }
+          ]
+        }
+      ],
+      "public_contracts": [
+        {
+          "name": "Clockin Worker API",
+          "contract_type": "Cloudflare Worker JSON API",
+          "location": "clockin-worker/worker.js",
+          "stability": "external",
+          "evidence_sources": [
+            {
+              "source_type": "code_reference",
+              "location": "clockin-worker/worker.js",
+              "summary": "Exposes authenticated health, status and clockin routes."
+            }
+          ]
+        }
+      ],
+      "data_boundaries": ["Worker environment secrets", "Upstream access token", "Clockin request and result"],
+      "runtime_entries": ["clockin-worker/worker.js fetch handler"],
+      "evidence_sources": [
+        {
+          "source_type": "code_reference",
+          "location": "clockin-worker/wrangler.toml",
+          "summary": "Worker runtime configuration already instructs API_TOKEN secret usage."
+        }
+      ],
+      "confidence": 0.94,
+      "unknowns": ["The deployed Worker version and secret rotation state are not evidenced."],
+      "impact_scope": ["Tracked example secret files and deployment documentation only"],
+      "verification_commands": ["node --check clockin-worker/worker.js", "npx wrangler deploy --dry-run"],
+      "rollback": {
+        "strategy": "Redeploy the prior Worker code revision while keeping any exposed token revoked.",
+        "commands": ["wrangler rollback"]
+      }
+    }
+  ]
+}

@@ -165,7 +165,7 @@ async def logout(
     # 清除页面路由鉴权用的 cookie
     response.delete_cookie(key="admin_session", path="/")
 
-    logger.info(f"User logged out, token: {token[:10]}...")
+    logger.info("用户已登出")
     return SuccessResponse(success=True, message="已登出")
 
 
@@ -218,7 +218,7 @@ async def verify_session(
     # 从 Authorization header 获取 token
     if authorization and authorization.startswith("Bearer "):
         token = authorization.replace("Bearer ", "")
-        logger.debug(f"verify_session called, token: {token[:10]}...")
+        logger.debug("verify_session 收到 Bearer Token")
     else:
         logger.warning("verify_session called without valid Authorization header")
         raise HTTPException(
@@ -237,7 +237,7 @@ async def verify_session(
     session = result.scalar_one_or_none()
 
     if not session:
-        logger.warning(f"Session not found or expired for token: {token[:10]}...")
+        logger.warning("Session 不存在或已过期")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token 无效或已过期"
