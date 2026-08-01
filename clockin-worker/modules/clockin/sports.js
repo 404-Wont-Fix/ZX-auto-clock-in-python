@@ -2,7 +2,7 @@
  * 运动打卡模块
  */
 
-import { getBingImage } from '../image.js';
+import { getBingImage, detectImageType } from '../image.js';
 import { uploadImage } from '../upload.js';
 import { fetchWithTimeout, postJson } from '../utils/fetch.js';
 
@@ -13,6 +13,29 @@ import { fetchWithTimeout, postJson } from '../utils/fetch.js';
  */
 async function fetchImageFromUrl(imageUrl) {
     try {
+        // admin 端已把非 JPEG 统一转码为 data:image/jpeg;base64,...。
+        // 这里直接 base64 解码，不依赖运行时 fetch 对 data: URL 的支持（更稳）。
+        if (imageUrl.startsWith('data:')) {
+            const commaIdx = imageUrl.indexOf(',');
+            const base64 = commaIdx >= 0 ? imageUrl.slice(commaIdx + 1) : '';
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const detected = detectImageType(bytes.buffer);
+            if (!detected) {
+                return { success: false, message: 'data URI 图片格式无法识别' };
+            }
+            console.log(`[自定义图片] data URI 解码成功，实际类型: ${detected.contentType}`);
+            return {
+                success: true,
+                data: {
+                    buffer: bytes.buffer,
+                    contentType: detected.contentType,
+                    fileName: `sports_${Date.now()}.${detected.extension}`
+                }
+            };
+        }
+
         console.log(`[自定义图片] 从URL获取图片: ${imageUrl}`);
 
         const response = await fetchWithTimeout(imageUrl, {
@@ -29,31 +52,29 @@ async function fetchImageFromUrl(imageUrl) {
         }
 
         const imageBuffer = await response.arrayBuffer();
-        const contentType = response.headers.get('content-type') || 'image/jpeg';
 
-        // 从 contentType 确定文件扩展名
-        let extension = 'jpg';
-        if (contentType.includes('png')) {
-            extension = 'png';
-        } else if (contentType.includes('gif')) {
-            extension = 'gif';
-        } else if (contentType.includes('webp')) {
-            extension = 'webp';
-        } else if (contentType.includes('jpeg')) {
-            extension = 'jpg';
+        // 用文件头识别真实格式，不信任 Content-Type 头——ACG 图床常返回与真实字节
+        // 不一致的头（例如把 WebP 标成 image/jpeg），这正是平台报
+        // “文件内容与扩展名不匹配（图片验证失败）”的根因。
+        const detected = detectImageType(imageBuffer);
+        if (!detected) {
+            return {
+                success: false,
+                message: '图片格式无法识别（URL 返回的可能不是有效图片）'
+            };
         }
 
-        // 生成带时间戳的文件名，确保有扩展名
+        // 生成带时间戳的文件名，扩展名与真实格式一致
         const timestamp = Date.now();
-        const fileName = `sports_${timestamp}.${extension}`;
+        const fileName = `sports_${timestamp}.${detected.extension}`;
 
-        console.log(`[自定义图片] 文件名: ${fileName}, 类型: ${contentType}`);
+        console.log(`[自定义图片] 文件名: ${fileName}, 实际类型: ${detected.contentType}`);
 
         return {
             success: true,
             data: {
                 buffer: imageBuffer,
-                contentType: contentType,
+                contentType: detected.contentType,
                 fileName: fileName
             }
         };

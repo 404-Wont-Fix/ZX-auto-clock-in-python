@@ -1,9 +1,11 @@
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import inspect, select
 
+from app.config import settings
 from app.models.database import ClockinResult, Task, User
 from app.services import task_service as task_module
 from app.services.clockin_service import ClockinService
@@ -150,10 +152,68 @@ async def test_runner_uses_independent_session_and_persists_progress(
     assert task.progress_current == task.progress_total
     assert task.started_at is not None
     assert task.completed_at is not None
-    assert task.result["results"] == [
-        {"user_id": "ok-user", "success": True, "error": None},
-        {"user_id": "bad-user", "success": False, "error": "模拟失败"},
-    ]
+    # 结果顺序由 select_user_ids 的 created_at/username 排序决定（并/串行一致），
+    # 这里只校验每个用户的结果内容，不绑定具体顺序。
+    results_by_user = {r["user_id"]: r for r in task.result["results"]}
+    assert set(results_by_user) == {"ok-user", "bad-user"}
+    assert results_by_user["ok-user"] == {
+        "user_id": "ok-user", "success": True, "error": None
+    }
+    assert results_by_user["bad-user"] == {
+        "user_id": "bad-user", "success": False, "error": "模拟失败"
+    }
+
+
+@pytest.mark.asyncio
+async def test_runner_executes_users_in_parallel_within_concurrency_limit(
+    db_session,
+    db_session_factory,
+    monkeypatch,
+):
+    """回归保护：run_task 必须真正并行执行用户，且并发数受信号量约束（C2 修复）。"""
+    users = [enabled_user(f"u{i}", f"user{i}") for i in range(6)]
+    db_session.add_all(users)
+    await db_session.commit()
+
+    in_flight = 0
+    peak = 0
+    lock = asyncio.Lock()
+
+    async def fake_trigger(db, user_id, triggered_by="manual"):
+        nonlocal in_flight, peak
+        async with lock:
+            in_flight += 1
+            peak = max(peak, in_flight)
+        await asyncio.sleep(0.05)  # 模拟 IO，让多个用户重叠执行
+        async with lock:
+            in_flight -= 1
+        return {"success": True, "error": None}
+
+    monkeypatch.setattr(ClockinService, "trigger_user", fake_trigger)
+    monkeypatch.setattr(settings, "parallel_tasks", 4)
+
+    orchestrator = task_module.TaskOrchestrator(session_factory=db_session_factory)
+
+    async def fake_api_count():
+        return 4  # 钉住并发上限 = min(parallel_tasks=4, 4) = 4
+
+    orchestrator._available_api_count = fake_api_count
+
+    task = await orchestrator.enqueue_task(
+        db_session,
+        scope="all",
+        target_date=BEIJING_TODAY,
+        requested_user_ids=[],
+        triggered_by="manual",
+        launch=False,
+    )
+    await orchestrator.run_task(task.id)
+    await db_session.refresh(task)
+
+    assert task.status == "completed"
+    # 确实并行（peak > 1），且没有突破信号量上限（peak <= 4）
+    assert peak > 1, "用户未并行执行，疑似退回串行"
+    assert peak <= 4, f"并发数 {peak} 突破了 parallel_tasks 上限"
 
 
 @pytest.mark.asyncio

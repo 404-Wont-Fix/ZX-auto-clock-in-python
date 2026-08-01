@@ -1,1 +1,24 @@
+# Cloudflare Worker (clockin-worker)
 clockin-worker/.dev.vars
+node_modules/
+.wrangler/
+
+# Python 虚拟环境（兼容 venv/ 与 .venv/ 两种命名）
+venv/
+.venv/
+
+# 本地数据库与备份
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.bak
+*.bak-*
+
+# 日志
+logs/
+*.log
+
+# 编辑器/系统
+.DS_Store
+.idea/

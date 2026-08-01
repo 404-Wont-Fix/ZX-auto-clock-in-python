@@ -133,6 +133,11 @@ class WorkerApiService:
         if not api:
             return None
 
+        # 防御：脱敏占位符（如 "••••e681"）绝不能被当作真实 token 落库，
+        # 否则会导致 worker 鉴权失败。真实 token 不会包含圆点 •。
+        if updates.token is not None and '•' in updates.token:
+            raise ValueError("Token 不能包含占位符 •，请输入真实 Token 或留空保持原值")
+
         # 如果更新 URL，规范化并检查是否冲突
         if updates.url and updates.url != api.url:
             normalized_url = WorkerApiService._normalize_url(updates.url)

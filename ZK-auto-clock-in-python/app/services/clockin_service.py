@@ -10,11 +10,12 @@ import asyncio
 import httpx
 import logging
 
-from app.models.database import User, ClockinResult, DailySummary, WorkerApi
+from app.models.database import User, ClockinResult, DailySummary, WorkerApi, Config
 from app.services.poetry_service import PoetryService
 from app.services.user_service import UserService
 from app.services.worker_api_service import WorkerApiService
 from app.services.active_task_service import ActiveTaskService
+from app.services.image_service import ImageService
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -45,8 +46,13 @@ class ClockinService:
             打卡结果字典
         """
         # 获取重试配置
-        max_retries = retries if retries is not None else settings.clockin_retry_count
-        retry_delay = settings.clockin_retry_delay
+        # 优先读取 DB 中的配置（可在“系统设置”页修改），回退到 .env / 默认值
+        max_retries = retries if retries is not None else await ClockinService._config_int(
+            db, 'clockin_retry_count', settings.clockin_retry_count
+        )
+        retry_delay = await ClockinService._config_int(
+            db, 'clockin_retry_delay', settings.clockin_retry_delay
+        )
         rate_limit_delay = settings.clockin_rate_limit_delay
         timeout = settings.clockin_timeout
 
@@ -94,11 +100,16 @@ class ClockinService:
                     image_selection = await PoetryService.get_sports_image_selection(db, user)
                     daily_comment = daily_selection.value or "今日学习内容总结，收获满满！"
                     sports_comment = sports_selection.value or "已运动！"
-                    image_data = (
-                        {"url": image_selection.value, "use_cw": False}
-                        if image_selection.value
-                        else None
-                    )
+                    # 统一转码为 JPEG（平台不支持 WebP；也规避“内容与扩展名不匹配”）。
+                    # JPEG 原样返回；其它格式转成 data:image/jpeg;base64,...；转码失败回退原 URL。
+                    raw_image_url = image_selection.value
+                    if raw_image_url:
+                        image_data = {
+                            "url": await ImageService.process_image_url(raw_image_url),
+                            "use_cw": False,
+                        }
+                    else:
+                        image_data = None
 
                     # 构建请求
                     url = f"{api_url}/clockin"
@@ -209,6 +220,9 @@ class ClockinService:
                     # 重新计算整体成功状态（覆盖外部 API 的 success 字段）
                     details = result.get('results', {})
 
+                    # “今日已完成”等重复打卡结果视为成功（修正 per-type 图标与整体判定）
+                    ClockinService._normalize_completed_types(details)
+
                     # 详细打印各个打卡类型的结果（用于调试）
                     for clockin_type, type_result in details.items():
                         if isinstance(type_result, dict):
@@ -238,12 +252,25 @@ class ClockinService:
 
                     result['success'] = ClockinService._calculate_overall_success(details)
 
-                    # 标记成功
+                    # 只要 Worker 正常响应（HTTP 200）即视为 worker 健康
                     if last_worker_api_id:
                         await WorkerApiService.mark_success(db, last_worker_api_id)
 
-                    task_success = True
-                    logger.info(f"[用户 {user.username}] 打卡成功，耗时 {duration:.0f}ms")
+                    if result['success']:
+                        task_success = True
+                        logger.info(f"[用户 {user.username}] 打卡成功，耗时 {duration:.0f}ms")
+                        return result
+
+                    # 整体失败（某类打卡真正失败）：按配置重试整次调用
+                    if attempt < max_retries:
+                        logger.info(
+                            f"[用户 {user.username}] 打卡未完全成功，{retry_delay}s 后重试"
+                            f"（第 {attempt + 1}/{max_retries} 次）"
+                        )
+                        await asyncio.sleep(retry_delay)
+                        continue
+
+                    logger.warning(f"[用户 {user.username}] 打卡失败，已达最大重试次数 {max_retries}")
                     return result
 
                 except Exception as e:
@@ -826,6 +853,42 @@ class ClockinService:
             'summary': summary.to_dict() if summary else None,
             'results': [r.to_dict() for r in results]
         }
+
+    # 平台返回这类消息表示当日已打卡过，应视为成功（目标已达成）。
+    COMPLETED_KEYWORDS = ('今日已完成', '已完成', '今日已签到', '请勿重复提交')
+
+    @staticmethod
+    def _normalize_completed_types(details: Dict) -> None:
+        """把“今日已完成”类的失败结果就地改成成功。
+
+        平台对当日重复打卡会返回 success=false + “今日已完成…”，但语义上当日的
+        打卡目标已经达成。这里把这类失败就地修正为成功，使得：
+          - per-type 图标（首/运/日）变绿；
+          - _calculate_overall_success 的整体判定正确；
+          - save_clockin_result 持久化的 details_json 也是修正后的状态。
+        """
+        if not isinstance(details, dict):
+            return
+        for type_result in details.values():
+            if not isinstance(type_result, dict) or type_result.get('success'):
+                continue
+            message = type_result.get('message') or ''
+            if any(kw in message for kw in ClockinService.COMPLETED_KEYWORDS):
+                type_result['success'] = True
+                if '视为成功' not in message:
+                    type_result['message'] = f"{message}（今日已完成，视为成功）"
+
+    @staticmethod
+    async def _config_int(db: AsyncSession, key: str, default: int) -> int:
+        """从 DB 配置表读取一个整数配置（可在“系统设置”页修改），异常或缺失时回退默认值。"""
+        try:
+            row = await db.execute(select(Config).where(Config.key == key))
+            config = row.scalar_one_or_none()
+            if config and str(config.value).strip() != '':
+                return int(float(str(config.value).strip()))
+        except Exception:
+            pass
+        return default
 
     @staticmethod
     def _calculate_overall_success(details: Dict) -> bool:

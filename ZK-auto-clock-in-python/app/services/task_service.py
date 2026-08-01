@@ -7,9 +7,10 @@ import json
 from datetime import date, datetime, timedelta, timezone
 from typing import Iterable, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config import settings
 from app.models.database import ClockinResult, Task, User, utc_now
 from app.services.clockin_service import ClockinService
 
@@ -106,6 +107,21 @@ class TaskService:
         task.updated_at = utc_now()
         await db.commit()
         return task
+
+    @staticmethod
+    async def increment_progress(db: AsyncSession, task_id: str, *, success: bool) -> None:
+        """并发安全的进度累加：在 SQL 层做 +1，避免 read-modify-write 的 lost update。"""
+        await db.execute(
+            update(Task)
+            .where(Task.id == task_id)
+            .values(
+                progress_current=Task.progress_current + 1,
+                progress_success=Task.progress_success + (1 if success else 0),
+                progress_failure=Task.progress_failure + (0 if success else 1),
+                updated_at=utc_now(),
+            )
+        )
+        await db.commit()
 
     @staticmethod
     async def complete_task(
@@ -264,49 +280,84 @@ class TaskOrchestrator:
         background_task.add_done_callback(self._background_tasks.discard)
         return background_task
 
+    async def _available_api_count(self) -> int:
+        """当前可用的 Worker API 数量（用于限制并发，避免挤在同一 worker 上触发限流）。"""
+        try:
+            from app.services.worker_api_service import WorkerApiService
+
+            async with self.session_factory() as db:
+                apis = await WorkerApiService.get_available_apis(db)
+            return len(apis)
+        except Exception:
+            return 0
+
+    def _resolve_concurrency(self, n_apis: int) -> int:
+        """并发度 = min(parallel_tasks, 可用 API 数)；无 API 时退化为 parallel_tasks。"""
+        if n_apis > 0:
+            limit = min(settings.parallel_tasks, n_apis)
+        else:
+            limit = settings.parallel_tasks
+        return max(1, limit)
+
     async def run_task(self, task_id: str) -> None:
+        # 1. 标记 running 并读取目标用户列表（独立短 session）
         async with self.session_factory() as db:
             task = await TaskService.get_task(db, task_id)
             if not task or task.status != "pending":
                 return
+            user_ids = list(task.user_ids)
+            triggered_by = task.triggered_by
             await TaskService.mark_running(db, task)
-            results = []
-            try:
-                for user_id in task.user_ids:
-                    try:
-                        outcome = await ClockinService.trigger_user(
-                            db,
-                            user_id,
-                            triggered_by=task.triggered_by,
-                        )
-                        succeeded = bool(outcome.get("success"))
-                        error = outcome.get("error")
-                    except Exception as exc:
-                        succeeded = False
-                        error = str(exc)
-                    results.append(
-                        {
-                            "user_id": user_id,
-                            "success": succeeded,
-                            "error": error,
-                        }
-                    )
-                    await TaskService.record_progress(db, task, success=succeeded)
 
-                await TaskService.complete_task(
-                    db,
-                    task,
-                    result={"results": results},
-                )
-            except Exception as exc:
-                await db.rollback()
+        if not user_ids:
+            async with self.session_factory() as db:
+                task = await TaskService.get_task(db, task_id)
+                if task and task.status == "running":
+                    await TaskService.complete_task(db, task, result={"results": []})
+            return
+
+        # 2. 有界并行执行；每个用户使用独立 DB session，进度走 SQL 原子 +1
+        max_concurrent = self._resolve_concurrency(await self._available_api_count())
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def run_one(user_id: str) -> dict:
+            async with semaphore:
+                try:
+                    async with self.session_factory() as udb:
+                        outcome = await ClockinService.trigger_user(
+                            udb, user_id, triggered_by=triggered_by
+                        )
+                    succeeded = bool(outcome.get("success"))
+                    error = outcome.get("error")
+                except Exception as exc:
+                    succeeded = False
+                    error = str(exc)
+                # 并发安全地累加进度（独立短 session）
+                try:
+                    async with self.session_factory() as pdb:
+                        await TaskService.increment_progress(pdb, task_id, success=succeeded)
+                except Exception:
+                    pass
+                return {"user_id": user_id, "success": succeeded, "error": error}
+
+        try:
+            # gather 按输入顺序返回结果，保持稳定的结果序列
+            results = await asyncio.gather(*(run_one(uid) for uid in user_ids))
+            async with self.session_factory() as db:
+                task = await TaskService.get_task(db, task_id)
+                if task and task.status == "running":
+                    await TaskService.complete_task(
+                        db, task, result={"results": list(results)}
+                    )
+        except Exception as exc:
+            async with self.session_factory() as db:
                 task = await TaskService.get_task(db, task_id)
                 if task:
                     await TaskService.complete_task(
                         db,
                         task,
                         status="failed",
-                        result={"results": results},
+                        result={"results": []},
                         error=str(exc)[:500],
                     )
 

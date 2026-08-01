@@ -29,4 +29,4 @@ sse-starlette==1.8.2
 # Utils
 pytz==2023.3
 # Image processing library for format conversion
-Pillow==10.2.0
+Pillow==12.3.0
