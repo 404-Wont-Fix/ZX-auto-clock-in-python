@@ -3,6 +3,16 @@ import { escapeHtml, formatDateTime, toBoolean } from "../core/format.js";
 import { icon } from "../core/icons.js";
 
 
+// 把“每日定时”型 CRON（5/6 字段，且 日/月/周 均为 *）解析成可编辑的时分；其余视为自定义表达式
+function parseScheduleCron(cronExpr) {
+  const cron = String(cronExpr || "").trim();
+  let m = cron.match(/^(\d+)\s+(\d+)\s+(\d+)\s+\*\s+\*\s+\*$/); // 秒 分 时 * * *
+  if (m) return { mode: "daily", hour: Number(m[3]), minute: Number(m[2]), cron };
+  m = cron.match(/^(\d+)\s+(\d+)\s+\*\s+\*\s+\*$/); // 分 时 * * *
+  if (m) return { mode: "daily", hour: Number(m[2]), minute: Number(m[1]), cron };
+  return { mode: "custom", hour: 0, minute: 10, cron: cron || "0 10 0 * * *" };
+}
+
 export function createSettingsPage(shell) {
   let config = {};
   let schedule = {};
@@ -16,8 +26,20 @@ export function createSettingsPage(shell) {
 
   function render() {
     const nextRun = schedule.job_info?.next_run_time_beijing || schedule.job_info?.next_run_time;
-    shell.content.innerHTML = `<div class="page-stack"><div class="notice warning">当前部署允许通过公网 IP + HTTP 访问。这意味着传输中的管理员口令、用户凭据和 Token 可能被窃听；仅应在你明确接受此风险的受控环境使用。</div><div class="settings-sections"><section class="setting-block span-2"><header><div><h2>计划任务</h2><p>配置每日自动执行时间；手动任务与计划任务使用同一个持久编排服务。</p></div><span class="status ${schedule.scheduler_running ? "success" : "failure"}">${schedule.scheduler_running ? "调度器运行中" : "调度器未运行"}</span></header><div class="setting-content"><form id="schedule-form"><div class="inline-fields"><div class="form-field grow"><label>CRON 表达式</label><input name="schedule_cron" value="${escapeHtml(config.schedule_cron || schedule.schedule_cron || "10 0 * * *")}" required></div><div class="form-field"><label>时区</label><input name="schedule_timezone" value="${escapeHtml(config.schedule_timezone || schedule.schedule_timezone || "Asia/Shanghai")}" required></div><label class="toggle" title="启用计划任务"><input name="schedule_enabled" type="checkbox" ${toBoolean(config.schedule_enabled ?? schedule.schedule_enabled) ? "checked" : ""}><span></span></label><button class="button primary" type="submit">保存计划</button></div><p class="metric-foot">下次执行：${nextRun ? escapeHtml(formatDateTime(nextRun)) : "未安排"}</p></form></div></section><section class="setting-block"><header><div><h2>打卡重试</h2><p>某类打卡真正失败时（如运动图片上传失败），按此处配置自动重试整次调用。</p></div></header><div class="setting-content"><form id="retry-form"><div class="inline-fields"><div class="form-field"><label>重试次数</label><input name="clockin_retry_count" type="number" min="0" max="10" value="${Number(config.clockin_retry_count ?? 3)}" required></div><div class="form-field"><label>重试间隔（秒）</label><input name="clockin_retry_delay" type="number" min="0" max="300" value="${Number(config.clockin_retry_delay ?? 3)}" required></div><button class="button primary" type="submit">保存</button></div><p class="metric-foot">设为 0 表示失败不重试。“今日已完成”等重复打卡视为成功，不会触发重试。</p></form></div></section><section class="setting-block span-2"><header><div><h2>Worker 节点</h2><p>维护执行节点、连接状态和请求统计。Token 在编辑时留空表示保持原值。</p></div><button class="button secondary" data-action="add-worker">${icon("plus")}添加节点</button></header><div class="setting-content">${workerList()}</div></section><section class="setting-block"><header><div><h2>数据导入导出</h2><p>新版普通导出不包含用户密码和 Worker Token；旧 1.0 文件可用于一次性迁移。</p></div></header><div class="setting-content"><div class="inline-fields"><button class="button secondary" data-action="export-config">${icon("download")}导出配置</button><input id="config-import-file" type="file" accept="application/json,.json" hidden><button class="button secondary" data-action="choose-import">${icon("upload")}导入配置</button><button class="button secondary" data-action="backup-database">创建数据库备份</button></div></div></section><section class="setting-block danger-zone"><header><div><h2>数据维护</h2><p>清理操作不可撤销，执行前会再次确认。</p></div></header><div class="setting-content"><div class="inline-fields"><div class="form-field"><label>保留最近天数</label><input id="cleanup-days" type="number" min="1" max="3650" value="${Number(config.retention_days || 7)}"></div><button class="button danger-quiet" data-action="cleanup-data">清理旧记录</button></div></div></section></div></div>`;
+    const cronValue = String(config.schedule_cron || schedule.schedule_cron || "0 10 0 * * *").trim();
+    const parsed = parseScheduleCron(cronValue);
+    const isCustom = parsed.mode === "custom";
+    const timeValue = `${String(parsed.hour).padStart(2, "0")}:${String(parsed.minute).padStart(2, "0")}`;
+    const tzValue = String(config.schedule_timezone || schedule.schedule_timezone || "Asia/Shanghai").trim();
+    const tzOptions = Array.from(new Set([tzValue, "Asia/Shanghai", "Asia/Hong_Kong", "Asia/Taipei", "Asia/Tokyo", "Asia/Singapore", "UTC", "Europe/London", "America/New_York", "America/Los_Angeles"]));
+    const tzOptionsHtml = tzOptions.map((option) => `<option value="${escapeHtml(option)}"${option === tzValue ? " selected" : ""}>${escapeHtml(option)}</option>`).join("");
+    const scheduleEnabled = toBoolean(config.schedule_enabled ?? schedule.schedule_enabled);
+    const previewTextHtml = isCustom
+      ? `${icon("alert")} 按自定义表达式 <code>${escapeHtml(parsed.cron)}</code> 执行`
+      : `${icon("check")} 每天一次，于 <strong>${escapeHtml(timeValue)}</strong>（${escapeHtml(tzValue)}）执行`;
+    shell.content.innerHTML = `<div class="page-stack"><div class="notice warning">当前部署允许通过公网 IP + HTTP 访问。这意味着传输中的管理员口令、用户凭据和 Token 可能被窃听；仅应在你明确接受此风险的受控环境使用。</div><div class="settings-sections"><section class="setting-block span-2"><header><div><h2>计划任务</h2><p>每天在指定时间自动执行打卡；手动触发不受影响。</p></div><span class="status ${schedule.scheduler_running ? "success" : "failure"}">${schedule.scheduler_running ? "调度器运行中" : "调度器未运行"}</span></header><div class="setting-content"><form id="schedule-form" novalidate><div class="inline-fields"><div class="form-field"><label>每天执行时间</label><input name="schedule_time" type="time" value="${timeValue}" ${isCustom ? "disabled" : ""}></div><div class="form-field grow"><label>时区</label><select name="schedule_timezone">${tzOptionsHtml}</select></div></div><label class="toggle-line"><span class="toggle"><input name="schedule_enabled" type="checkbox" ${scheduleEnabled ? "checked" : ""}><span></span></span><span class="toggle-text"><span>启用计划任务</span><small>关闭后不会自动执行，仍可手动触发</small></span></label><div class="schedule-preview ${isCustom ? "is-custom" : ""}" role="status"><span class="schedule-preview-text">${previewTextHtml}</span><span class="schedule-preview-next">下次执行：${nextRun ? escapeHtml(formatDateTime(nextRun)) : "未安排"}</span></div><details class="schedule-advanced"><summary>${icon("chevron")}<span>高级：自定义 CRON 表达式</span></summary><div class="advanced-body"><label class="checkbox-row"><input name="use_custom_cron" type="checkbox" ${isCustom ? "checked" : ""}><span class="checkbox-text"><span>使用自定义表达式</span><small>适用于非每日排程（如每周一、每 15 分钟）；勾选后上方时间将被忽略</small></span></label><div class="form-field"><label>CRON 表达式</label><input name="schedule_cron" type="text" value="${escapeHtml(parsed.cron)}" ${isCustom ? "" : "disabled"} spellcheck="false" autocomplete="off" placeholder="0 10 0 * * *"><small>格式：秒 分 时 日 月 周。示例 <code>0 10 0 * * *</code> 表示每天 00:10；<code>0 0 9 * * MON-FRI</code> 表示工作日 09:00</small></div></div></details><div class="form-tail"><button class="button primary" type="submit">${icon("check")}保存计划</button></div></form></div></section><section class="setting-block"><header><div><h2>打卡重试</h2><p>某类打卡真正失败时（如运动图片上传失败），按此处配置自动重试整次调用。</p></div></header><div class="setting-content"><form id="retry-form"><div class="inline-fields"><div class="form-field"><label>重试次数</label><input name="clockin_retry_count" type="number" min="0" max="10" value="${Number(config.clockin_retry_count ?? 3)}" required></div><div class="form-field"><label>重试间隔（秒）</label><input name="clockin_retry_delay" type="number" min="0" max="300" value="${Number(config.clockin_retry_delay ?? 3)}" required></div><button class="button primary" type="submit">保存</button></div><p class="metric-foot">设为 0 表示失败不重试。“今日已完成”等重复打卡视为成功，不会触发重试。</p></form></div></section><section class="setting-block span-2"><header><div><h2>Worker 节点</h2><p>维护执行节点、连接状态和请求统计。Token 在编辑时留空表示保持原值。</p></div><button class="button secondary" data-action="add-worker">${icon("plus")}添加节点</button></header><div class="setting-content">${workerList()}</div></section><section class="setting-block"><header><div><h2>数据导入导出</h2><p>新版普通导出不包含用户密码和 Worker Token；旧 1.0 文件可用于一次性迁移。</p></div></header><div class="setting-content"><div class="inline-fields"><button class="button secondary" data-action="export-config">${icon("download")}导出配置</button><input id="config-import-file" type="file" accept="application/json,.json" hidden><button class="button secondary" data-action="choose-import">${icon("upload")}导入配置</button><button class="button secondary" data-action="backup-database">创建数据库备份</button></div></div></section><section class="setting-block danger-zone"><header><div><h2>数据维护</h2><p>清理操作不可撤销，执行前会再次确认。</p></div></header><div class="setting-content"><div class="inline-fields"><div class="form-field"><label>保留最近天数</label><input id="cleanup-days" type="number" min="1" max="3650" value="${Number(config.retention_days || 7)}"></div><button class="button danger-quiet" data-action="cleanup-data">清理旧记录</button></div></div></section></div></div>`;
     shell.content.querySelector("#schedule-form").addEventListener("submit", saveSchedule);
+    wireScheduleForm(shell.content.querySelector("#schedule-form"));
     shell.content.querySelector("#retry-form").addEventListener("submit", saveRetry);
     shell.content.querySelector("#config-import-file").addEventListener("change", importConfig);
     shell.ready();
@@ -67,18 +89,63 @@ export function createSettingsPage(shell) {
     }
   }
 
+  function wireScheduleForm(form) {
+    if (!form) return;
+    const timeInput = form.elements.schedule_time;
+    const cronInput = form.elements.schedule_cron;
+    const tzSelect = form.elements.schedule_timezone;
+    const customBox = form.elements.use_custom_cron;
+    const previewBox = form.querySelector(".schedule-preview");
+    const previewText = form.querySelector(".schedule-preview-text");
+    const sync = () => {
+      const custom = !!customBox.checked;
+      timeInput.disabled = custom;
+      cronInput.disabled = !custom;
+      previewBox.classList.toggle("is-custom", custom);
+      if (custom) {
+        previewText.innerHTML = `${icon("alert")} 按自定义表达式 <code>${escapeHtml(cronInput.value.trim() || "—")}</code> 执行`;
+      } else {
+        const m = (timeInput.value || "").match(/^(\d{1,2}):(\d{1,2})$/);
+        if (m) cronInput.value = `0 ${m[2]} ${m[1]} * * *`;
+        previewText.innerHTML = `${icon("check")} 每天一次，于 <strong>${escapeHtml(timeInput.value || "--:--")}</strong>（${escapeHtml(tzSelect.value)}）执行`;
+      }
+    };
+    customBox.addEventListener("change", sync);
+    timeInput.addEventListener("input", sync);
+    tzSelect.addEventListener("change", sync);
+    cronInput.addEventListener("input", sync);
+  }
+
   async function saveSchedule(event) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
     const button = form.querySelector('[type="submit"]');
+    const useCustom = !!form.elements.use_custom_cron?.checked;
+    let cron;
+    if (useCustom) {
+      cron = (data.get("schedule_cron") || "").trim();
+      if (!cron) {
+        shell.toast("请填写 CRON 表达式", "error");
+        shell.setButtonBusy(button, false);
+        return;
+      }
+    } else {
+      const match = (data.get("schedule_time") || "").trim().match(/^(\d{1,2}):(\d{1,2})$/);
+      if (!match) {
+        shell.toast("请选择有效的执行时间", "error");
+        shell.setButtonBusy(button, false);
+        return;
+      }
+      cron = `0 ${match[2]} ${match[1]} * * *`;
+    }
     shell.setButtonBusy(button, true, "保存中");
     try {
       const response = await apiRequest("/api/config", {
         method: "PUT",
         body: {
-          schedule_cron: data.get("schedule_cron")?.trim(),
-          schedule_timezone: data.get("schedule_timezone")?.trim(),
+          schedule_cron: cron,
+          schedule_timezone: (data.get("schedule_timezone") || "").trim(),
           schedule_enabled: data.get("schedule_enabled") === "on",
         },
       });
@@ -155,21 +222,22 @@ export function createSettingsPage(shell) {
   }
 
   async function importConfig(event) {
+    const fileInput = event.currentTarget;
     const file = event.currentTarget.files?.[0];
     if (!file) return;
     const confirmed = await shell.confirm({ title: "导入配置文件", message: "旧 1.0 文件可能包含明文密码和 Token。导入过程不会回显密钥；完成后请立即安全删除旧文件。", confirmLabel: "导入", danger: false });
-    if (!confirmed) { event.currentTarget.value = ""; return; }
+    if (!confirmed) { fileInput.value = ""; return; }
     try {
       const payload = JSON.parse(await file.text());
       const response = await apiRequest("/api/config/import", { method: "POST", body: payload });
       if (!isActive()) return;
       shell.toast(response.message || "配置导入完成", "success");
-      event.currentTarget.value = "";
+      fileInput.value = "";
       await load({ silent: true });
     } catch (error) {
       if (!isActive() || error?.name === "AbortError") return;
       shell.toast(error instanceof SyntaxError ? "导入文件不是有效 JSON" : error.message, "error");
-      event.currentTarget.value = "";
+      fileInput.value = "";
     }
   }
 
@@ -242,3 +310,4 @@ export function createSettingsPage(shell) {
     },
   };
 }
+

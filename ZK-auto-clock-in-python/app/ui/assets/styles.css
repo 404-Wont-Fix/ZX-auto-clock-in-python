@@ -316,6 +316,32 @@ details.row-menu summary::-webkit-details-marker { display: none; }
 .toggle input:checked + span { background: var(--accent); }
 .toggle input:checked + span::after { transform: translateX(16px); }
 
+/* 计划任务：带文字标签的开关、人话预览、高级折叠 */
+.toggle-line { display: inline-flex; align-items: center; gap: 10px; margin-top: 6px; cursor: pointer; }
+.toggle-line .toggle-text { display: grid; gap: 2px; }
+.toggle-line .toggle-text > span { font-size: 13px; font-weight: 650; color: var(--text); }
+.toggle-line .toggle-text small { color: var(--text-muted); font-size: 11px; font-weight: 400; }
+.schedule-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 14px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--accent-soft); font-size: 12px; color: var(--text-secondary); }
+.schedule-preview.is-custom { background: var(--warning-soft); }
+.schedule-preview-text { display: inline-flex; align-items: center; gap: 6px; }
+.schedule-preview-text svg { color: var(--success); flex: none; }
+.schedule-preview.is-custom .schedule-preview-text svg { color: var(--warning); }
+.schedule-preview-text strong { color: var(--text); font-weight: 700; }
+.schedule-preview code, .form-field small code { padding: 1px 6px; border-radius: 4px; background: var(--surface-raised); color: var(--text); font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.form-field small code { background: var(--surface-hover); }
+.schedule-preview-next { color: var(--text-muted); margin-left: auto; }
+.schedule-advanced { margin-top: 16px; border-top: 1px dashed var(--line); padding-top: 14px; }
+.schedule-advanced > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; font-weight: 650; }
+.schedule-advanced > summary::-webkit-details-marker { display: none; }
+.schedule-advanced > summary svg { color: var(--text-muted); transition: transform .15s ease; }
+.schedule-advanced[open] > summary svg { transform: rotate(90deg); }
+.schedule-advanced .advanced-body { display: grid; gap: 14px; margin-top: 14px; }
+.checkbox-row { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.checkbox-row input { margin-top: 2px; width: 16px; height: 16px; accent-color: var(--accent); flex: none; }
+.checkbox-row .checkbox-text { display: grid; gap: 2px; font-size: 13px; color: var(--text); }
+.checkbox-row .checkbox-text small { color: var(--text-muted); font-size: 11px; }
+.form-tail { display: flex; justify-content: flex-end; margin-top: 18px; }
+
 .segment { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
 .segment button { min-height: 29px; padding: 0 10px; color: var(--text-muted); font-size: 11px; }
 .segment button.active { background: var(--surface-hover); color: var(--text); }
