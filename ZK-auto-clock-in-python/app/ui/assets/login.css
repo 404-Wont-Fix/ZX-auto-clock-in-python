@@ -44,28 +44,28 @@ button, input { font: inherit; }
 .context-brand span { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 800; }
 .context-brand strong { font-size: 13px; letter-spacing: .03em; }
 .context-copy { margin: auto 0; max-width: 520px; }
-.eyebrow { margin: 0 0 9px; color: var(--text-muted); font-size: 10px; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
-.context-copy h1 { margin: 0; font-size: clamp(42px, 5.2vw, 72px); line-height: 1.04; letter-spacing: -.055em; }
-.context-copy > p:last-child { max-width: 440px; margin: 25px 0 0; color: var(--text-secondary); font-size: 14px; line-height: 1.8; }
-.context-points { margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 11px 22px; list-style: none; color: var(--text-muted); font-size: 11px; }
+.eyebrow { margin: 0 0 10px; color: var(--text-muted); font-size: 11px; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
+.context-copy h1 { margin: 0; font-size: clamp(46px, 5.6vw, 78px); line-height: 1.04; letter-spacing: -.055em; }
+.context-copy > p:last-child { max-width: 440px; margin: 28px 0 0; color: var(--text-secondary); font-size: 15px; line-height: 1.8; }
+.context-points { margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px 24px; list-style: none; color: var(--text-muted); font-size: 12px; }
 .context-points li { display: flex; align-items: center; gap: 8px; }
 .context-points i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 
 .login-panel { min-height: 100vh; padding: 30px; display: grid; place-items: center; }
 .login-form-wrap { width: min(390px, 100%); }
-.login-form-wrap h2 { margin: 0; font-size: 30px; letter-spacing: -.035em; }
-.login-subtitle { margin: 7px 0 29px; color: var(--text-secondary); font-size: 13px; }
-.form-group { margin-bottom: 17px; }
-.form-group label { display: block; margin-bottom: 7px; color: var(--text-secondary); font-size: 11px; font-weight: 650; }
-.form-group input { width: 100%; height: 44px; padding: 0 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--text); transition: border-color .15s ease, background-color .15s ease; }
+.login-form-wrap h2 { margin: 0; font-size: 34px; letter-spacing: -.035em; }
+.login-subtitle { margin: 8px 0 32px; color: var(--text-secondary); font-size: 14px; }
+.form-group { margin-bottom: 20px; }
+.form-group label { display: block; margin-bottom: 8px; color: var(--text-secondary); font-size: 12px; font-weight: 650; }
+.form-group input { width: 100%; height: 48px; padding: 0 15px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--text); transition: border-color .15s ease, background-color .15s ease; }
 .form-group input::placeholder { color: var(--text-muted); }
 .form-group input:focus { outline: 0; border-color: var(--accent); background: var(--surface-raised); }
-#loginBtn { width: 100%; height: 44px; margin-top: 8px; border: 0; border-radius: 9px; background: var(--accent); color: #fff; font-weight: 700; cursor: pointer; transition: background-color .15s ease, opacity .15s ease; }
+#loginBtn { width: 100%; height: 48px; margin-top: 10px; border: 0; border-radius: 9px; background: var(--accent); color: #fff; font-weight: 700; cursor: pointer; transition: background-color .15s ease, opacity .15s ease; }
 #loginBtn:hover:not(:disabled) { background: var(--accent-strong); }
 #loginBtn:disabled { opacity: .55; cursor: wait; }
-.error { display: none; margin: 0 0 17px; padding: 10px 12px; border: 1px solid rgba(237, 106, 114, .3); border-radius: 9px; background: var(--danger-soft); color: var(--danger); font-size: 11px; }
+.error { display: none; margin: 0 0 18px; padding: 11px 13px; border: 1px solid rgba(237, 106, 114, .3); border-radius: 9px; background: var(--danger-soft); color: var(--danger); font-size: 12px; }
 .error.show { display: block; }
-.login-meta { margin: 22px 0 0; color: var(--text-muted); font-size: 10px; text-align: center; }
+.login-meta { margin: 24px 0 0; color: var(--text-muted); font-size: 11px; text-align: center; }
 
 @media (max-width: 850px) {
     .login-shell { display: block; }
@@ -76,3 +76,5 @@ button, input { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
     * { transition-duration: .01ms !important; }
 }
+
+
