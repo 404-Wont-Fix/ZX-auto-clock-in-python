@@ -1,8 +1,8 @@
 # ZX Auto Clock-in System
 
-ZX 是一个面向足下教育现代化学习平台的单管理员、多账号自动打卡控制台，包含 FastAPI Admin、SQLite 数据库、原生浏览器后台和独立的 Cloudflare Worker 执行器：Admin 负责账号、内容源与任务编排，Worker 负责与目标平台的打卡接口交互（首页、运动、日精进等）。
+ZX 是一个面向**足下教育现代化学习平台**的单管理员、多账号自动打卡系统：你在自己的服务器上跑一个管理面板，添加同学的足下账号，它就会每天定时帮所有人自动完成打卡（首页、运动、日精进三类），文案和配图还能从多个内容源随机抽取，避免千篇一律。
 
-内容源支持文字与图片的可视化管理，后台信息架构围绕五个一级页面组织。
+技术栈：FastAPI + SQLite + 原生前端 + Cloudflare Worker。
 
 ## ⚠️ 免责声明
 
@@ -15,231 +15,223 @@ ZX 是一个面向足下教育现代化学习平台的单管理员、多账号�
 
 继续使用本项目即视为已阅读并同意本声明。
 
-## 安全提示
+## 它是怎么工作的
 
-若通过“公网 IP + HTTP”部署，传输中的管理员口令、足下账号密码和 Worker Token 会面临被窃听或篡改的风险，不能视为安全生产入口；条件允许时应使用 HTTPS、VPN 或可信反向代理。
+整个系统只有两个部件，理解了这张图就理解了全部：
 
-仓库不包含可用的固定 Worker Token。部署 Worker 时使用：
+```text
+┌──────────────┐   HTTP    ┌─────────────────────┐   HTTP    ┌────────────┐
+│  ZX Admin     │ ────────> │  Cloudflare Worker   │ ────────> │  足下学习平台 │
+│  管理面板      │           │  打卡执行器（免费）     │           │             │
+│  你的服务器上  │ <──────── │  Cloudflare 全球网络  │ <──────── │             │
+└──────────────┘   结果     └─────────────────────┘   结果     └────────────┘
+```
+
+- **ZX Admin（管理面板）**：跑在你自己的服务器或电脑上。存账号、发任务、看记录、设定时。它**不直接**访问足下平台。
+- **Cloudflare Worker（打卡执行器）**：部署在 Cloudflare 免费额度上的一个小函数。Admin 把任务交给它，由它去平台执行打卡再把结果带回来。分开部署的好处：平台侧只看到 Cloudflare 的 IP，你服务器不出网直连；Worker 可以部署多个做负载均衡。
+- **数据**：全部存在 Admin 服务器本地的一个 SQLite 文件里，不上传任何第三方。
+
+## 功能一览
+
+后台一共五个页面：
+
+| 页面 | 干什么用 |
+|---|---|
+| **总览** | 今天成功/失败/未执行多少、下次定时时间、正在执行的任务进度、Worker 和内容源健康状况，失败了一键重试 |
+| **用户** | 添加/编辑打卡账号，单人立即打卡，启用停用 |
+| **打卡记录** | 按日期、用户、状态筛选，点开看每类打卡的详细结果 |
+| **内容源** | 管理文案和图片的来源（诗词、一言、Bing 壁纸等），测试可用性、调优先级 |
+| **系统设置** | 定时任务、Worker 节点、重试参数、配置导入导出、备份、清理旧记录 |
+
+## 准备清单
+
+开始前确认你都有：
+
+- [ ] 一台能联网的机器（1 核 1G 的最低配服务器就够，自己电脑也行）
+- [ ] 一个 Cloudflare 账号（免费版即可，Worker 免费额度完全够用）
+- [ ] Node.js 18+（用来部署 Worker）
+- [ ] Docker（推荐，部署 Admin 最省事）；不用 Docker 的话需要 Python 3.11+
+- [ ] 要打卡的足下账号和密码
+
+## 第一步：部署打卡执行器（Cloudflare Worker）
+
+> 只需要做一次，大约 5 分钟。
 
 ```bash
 cd clockin-worker
+npm install
+
+# 1. 登录 Cloudflare（会弹浏览器授权）
+npx wrangler login
+
+# 2. 设置访问令牌（Admin 调用 Worker 的凭证）
+#    先自己生成一个随机字符串，例如：python -c "import secrets; print(secrets.token_hex(16))"
 npx wrangler secret put API_TOKEN
+#    粘贴你生成的字符串并回车 —— 记住它，后面 Admin 里还要填
+
+# 3. 部署
 npx wrangler deploy
 ```
 
-历史已泄露的 Token 不得复用。
-
-## 当前能力
-
-后台固定为五个一级页面：
-
-- 总览：今日成功、失败、未执行、下次计划、任务进度、Worker 与内容源健康，以及失败重试。
-- 用户：本地搜索筛选、单人打卡、编辑、启停和收纳在更多菜单中的删除操作。
-- 打卡记录：日期、状态和用户筛选，三类结果摘要与详情抽屉。
-- 内容源：文字/图片分组、健康与延迟、排序、复制、编辑、归档、单测和全测。
-- 系统设置：计划任务、Worker 节点、2.0 导出、1.0 兼容导入、备份和危险维护操作。
-
-桌面端使用侧栏，手机端使用四项底部导航；内容源和系统设置收进“更多”。高频操作在页面或一级抽屉内完成，危险操作增加一次确认，不使用嵌套弹窗。
-
-前端为原生 HTML/CSS/ES Modules，没有生产构建链或运行时组件 CDN。主题深色优先，并根据系统浅色偏好自动切换。
-
-## 内容源
-
-Admin 将内容源保存为受控数据库配置，只允许公网 HTTPS GET，并支持以下解析模式：
-
-- `json_text`
-- `plain_text`
-- `json_image`
-- `redirect_image`
-
-域名解析结果和每次重定向都会重新执行 SSRF 校验；本机、内网、链路本地和保留地址会被拒绝。文字响应上限为 64 KiB，图片直返只流式检查响应头和有限前缀。
-
-默认来源：
-
-| 类型 | 来源 |
-|---|---|
-| 文字 | 今日诗词、Hitokoto、QZQI 新一言 |
-| 图片 | Bing、Bing 官方 UHD、Komll、LoliAPI、次元图源 |
-
-一次失败进入降级，连续三次标记不可用，成功后立即恢复。实际使用与每小时计划探测都会更新健康状态。
-
-## 持久打卡任务
-
-手动全部、单人打卡、今日失败重试和计划任务复用同一个持久编排服务：
-
-```http
-POST /api/clockin/tasks
-Content-Type: application/json
-
-{
-  "scope": "all | failed | users",
-  "date": "YYYY-MM-DD",
-  "user_ids": []
-}
-```
-
-创建成功返回 `202`；同时已有活动任务时返回 `409` 和现有任务编号。前端每两秒读取持久进度。服务重启会把遗留的 `pending/running` 任务标记为中断。
-
-“今日失败”按北京时间当天、每位启用用户的最新结果计算，已成功用户不会被重复处理。
-
-## 架构
+部署成功的输出里会有一行 URL，类似：
 
 ```text
-Browser Admin
-  └─ authenticated HTTP
-      └─ FastAPI routes
-          └─ application services
-              ├─ SQLite / SQLAlchemy async sessions
-              ├─ controlled public content sources
-              └─ Cloudflare Worker HTTP API
+https://zx-clockin-executor-api-2.你的子域.workers.dev
 ```
 
-运行约束：
+**把这个 URL 和刚才的 Token 记下来**，第二步要用。
 
-- FastAPI 路由保持薄层，业务编排位于 `app/services/`。
-- 浏览器只访问 Admin HTTP API，不接触数据库或第三方内容源。
-- 后台任务使用独立数据库会话。
-- Compose 只运行单个 Uvicorn 进程，避免 APScheduler 和进程内任务重复执行。
-- 新部署使用全新 SQLite，通过旧版 `1.0` 配置文件导入，不做旧 SQLite 原地迁移。
+<details>
+<summary>部署多个 Worker 做冗余（可选）</summary>
 
-仓库结构：
+改一下 `wrangler.toml` 里的 `name`（比如加个 `-2` 后缀）再 `npx wrangler deploy`，就得到第二个独立 Worker。多个节点会在 Admin 里自动轮询分流，一个挂了另一个顶上。
 
-```text
-.
-├── ZX-auto-clock-in-python/
-│   ├── app/
-│   │   ├── api/                 # FastAPI 路由
-│   │   ├── core/                # 数据库、安全与调度器
-│   │   ├── models/              # SQLAlchemy 与 Pydantic 模型
-│   │   ├── services/            # 内容源、任务、Worker、导入导出
-│   │   └── ui/                  # HTML、CSS 与 ES Modules
-│   ├── tests/
-│   ├── Dockerfile
-│   └── docker-compose.yml
-├── clockin-worker/
-├── docs/architecture/
-└── docs/superpowers/specs/
-```
+</details>
 
-## Docker Compose 部署
+## 第二步：部署管理面板（ZX Admin）
 
-进入 Admin 目录并准备配置：
+### 方式 A：Docker 部署（推荐）
 
 ```bash
-cd ZX-auto-clock-in-python
+git clone https://github.com/404-Wont-Fix/ZX-auto-clock-in-python.git
+cd ZX-auto-clock-in-python/ZX-auto-clock-in-python
+
 cp .env.example .env
 mkdir -p database logs
 ```
 
-生产部署必须修改：
+用任意编辑器打开 `.env`，**必须修改**以下四项（生产模式下不改会拒绝启动）：
 
-```dotenv
-APP_ENV=production
-DEBUG=false
-SECRET_KEY=替换为足够长的随机值
-ADMIN_USERNAME=替换为非空管理员名
-ADMIN_PASSWORD=替换为强密码
-ADMIN_PATH=替换为不易猜测的入口路径
-```
+| 变量 | 改成什么 |
+|---|---|
+| `SECRET_KEY` | 一长串随机字符串（同上 `secrets.token_hex(32)` 生成） |
+| `ADMIN_USERNAME` | 你的管理员用户名（别用空值） |
+| `ADMIN_PASSWORD` | 强密码（不能为空，也不能是 `admin`） |
+| `ADMIN_PATH` | 后台入口路径，如 `my-panel-7421`（别人猜不到才有伪装效果） |
 
-默认 `SECRET_KEY`、空管理员名以及空密码或 `admin` 密码会让生产模式拒绝启动。
-
-启动并验证：
+然后启动：
 
 ```bash
-docker compose config
-docker compose build
-docker compose up -d
-docker compose ps
-curl http://127.0.0.1:8032/health
+docker compose up -d --build
+docker compose ps          # 应显示 running (healthy)
+curl http://127.0.0.1:8032/health    # 返回 JSON 即正常
 ```
 
-访问 `http://服务器IP:8032/你的 ADMIN_PATH`。`./database` 与 `./logs` 会挂载进容器；`/health` 同时验证 Web 进程和 SQLite 查询能力。
+浏览器访问 `http://你的服务器IP:8032/你设置的ADMIN_PATH` 就能看到登录页。
+（访问其他路径只会看到一个伪装的 nginx 页面，这正是它的用途。）
 
-完整步骤、旧数据导入、持久化验证和回滚说明见 [Docker Compose 部署指南](ZX-auto-clock-in-python/docker-deploy-guide.md)。
+> 端口 `8032` 想改的话，改 `docker-compose.yml` 里 `ports: - "8032:8000"` 左边的数字。
 
-## 本地开发
-
-需要 Python 3.11+ 和 Node.js 20+：
+### 方式 B：手动部署（不用 Docker）
 
 ```bash
 cd ZX-auto-clock-in-python
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-cp .env.example .env
-python scripts/init_db.py
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+python -m venv .venv
+source .venv/bin/activate        # Windows 用 .venv\Scripts\activate
+pip install -r requirements.txt
+
+cp .env.example .env             # 同样编辑上面那四项
+python scripts/init_db.py        # 初始化数据库
+
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-开发模式允许示例管理员配置，但不得将它用于公网部署。
+访问 `http://127.0.0.1:8000/你的ADMIN_PATH`。
 
-## 数据导入导出
+## 第三步：10 分钟上手配置
 
-- `2.0` 普通导出使用 `zx-admin-config-YYYY-MM-DD.json` 文件名，不包含用户密码、Worker Token 或旧 `clockin_api_token`。
-- 敏感字段编辑时留空表示保持原值。
-- 旧 `1.0` 文件可恢复明文密码和 Token，但导入响应及日志不会回显密钥。
-- 旧版批处理配置 `batch_size`、`batch_delay`、`parallel_tasks` 会正常导入，并在安全 `2.0` 导出中保留。
-- 导入旧文件后应立即安全删除原文件，并轮换任何曾暴露的 Token。
-- 旧远梦、cenguigui、KLapi 会映射到 QZQI；旧 `bing_uhd` 映射到 Bing 官方 UHD；未知来源会回退并产生警告。
+部署好后，按顺序做这五件事就能跑起来：
 
-## 验证
+### 3.1 登录后台
 
-普通自动化不访问真实打卡账号，也不会把第三方内容源的临时波动当作单元测试失败。
+用 `.env` 里设置的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录。
+
+### 3.2 添加 Worker 节点
+
+进入 **系统设置 → Worker 节点 → 添加节点**：
+
+- **节点名称**：随便起，比如 `主节点`
+- **Worker 地址**：第一步记下的 `https://xxx.workers.dev`
+- **API Token**：第一步 `wrangler secret put API_TOKEN` 时设置的字符串
+
+保存后点该行的 ▶ **测试连接**，状态显示「可用」就通了。
+
+### 3.3 添加打卡账号
+
+进入 **用户 → 添加用户**：
+
+- **足下账号 / 密码**：同学在平台的真实账号密码（密码只存在你服务器本地）
+- **内容策略**（可选）：运动和日进军的文案可以选「平台默认 / 固定文案 / 内容源随机」三种方式；高级设置里还能选图片来源（Bing 壁纸、二次元图源等）
+- 重复操作把所有人的账号都加上
+
+### 3.4 手动测试一次
+
+在 **用户** 页面点某人那一行的 ▶ 立即打卡，完成后到 **打卡记录** 里点开这条记录：
+三个格子（首页 / 运动 / 日精进）都是绿色 ✔ 就说明全链路打通了。
+
+### 3.5 开启每日定时
+
+进入 **系统设置 → 计划任务**：
+
+- 设置「每天执行时间」（默认 `00:10`）和时区（默认北京时间）
+- 打开「启用计划任务」开关，保存
+- 面板会显示「下次执行」时间，到点自动开跑；已打过卡的不会重复执行
+
+需要非每日的排程（如仅工作日）？展开「高级」用自定义 CRON 表达式（格式：`秒 分 时 日 月 周`）。
+
+## 日常使用
+
+- **每天看一眼总览**：失败数不是 0 就点「重试失败」；Worker 显示不可用多半是额度或网络问题，去系统设置点测试/重置。
+- **文案不想重样**：内容源页里开几个文字源（今日诗词 / 一言 / QZQI），用户的内容策略选「内容源」即可随机抽取；图片源同理。
+- **换机器/重装**：系统设置 → 导出配置（不含密码）+ 创建数据库备份（完整数据），到新机器导入。
+- **记录越来越多**：系统设置 → 数据维护 → 清理旧记录（默认只保留 7 天）。
+
+## 常见问题（FAQ）
+
+**打卡全部失败，提示「没有可用的 Worker 节点」**
+去 系统设置 → Worker 节点 看状态列。常见原因：① Token 填错（和 `wrangler secret put` 时的值不一致）② Worker 地址复制不完整 ③ Worker 没部署成功。点「测试连接」验证；之前连续失败被标记「不可用」的，修好后点「重置可用状态」。
+
+**忘了后台密码 / 想改管理员**
+改 `.env` 里的 `ADMIN_USERNAME`、`ADMIN_PASSWORD`，然后 `docker compose restart`。
+
+**数据存在哪？怎么备份？**
+全部在 `database/zx_admin.db` 一个文件里（Docker 部署时挂载在宿主机 `./database` 目录）。系统设置里有「创建数据库备份」按钮，定期备份这个目录即可。
+
+**定时任务没执行？**
+先看 系统设置 → 计划任务 里调度器是否显示「运行中」、开关是否打开；再检查时区设置对不对。容器重启后调度器会自动恢复。
+
+**能开多个进程提速吗？**
+不要。系统约定只运行单个 Uvicorn 进程（docker compose 配置已固定），开多进程会导致定时任务被重复触发。
+
+**安全建议**
+后台走公网 HTTP 时密码是明文传输的，建议：改一个难猜的 `ADMIN_PATH`、用强密码、有条件套一层 HTTPS 反向代理。不要把 `.env` 文件提交到任何仓库。
+
+## 面向开发者
+
+- 前端为原生 HTML/CSS/ES Modules，无框架、无构建链、无运行时 CDN；后端 FastAPI + SQLAlchemy async + APScheduler，业务逻辑在 `app/services/`，路由保持薄层。
+- 仓库结构：
+
+```text
+.
+├── ZX-auto-clock-in-python/   # Admin（FastAPI 后端 + 原生前端）
+│   ├── app/api/               # 路由
+│   ├── app/services/          # 业务逻辑（打卡编排、内容源、Worker、任务）
+│   ├── app/ui/                # 前端（页面 + ES Modules）
+│   └── tests/                 # pytest / Node / Playwright
+├── clockin-worker/            # Cloudflare Worker 执行器
+└── docs/                      # 架构记录与设计规格
+```
+
+- 跑测试：
 
 ```bash
 cd ZX-auto-clock-in-python
 python -m pytest -q
-python -m compileall -q app scripts
 node --test tests/frontend/*.test.mjs
-find app/ui/assets/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
-node --check app/ui/assets/login.js
+npx playwright test          # 端到端
 ```
 
-端到端与发布验证还包括：
-
-```bash
-npx playwright test
-docker compose config
-docker compose build
-```
-
-发布前单独运行实时内容源探测；不要使用真实足下账号执行测试。
-
-```bash
-python scripts/probe_content_sources.py
-```
-
-默认探测使用系统 DNS，与 Admin 运行时的 SSRF 判定一致。如果开发环境将公网域名透明映射到保留地址，可显式使用固定公网 DoH 只检查第三方来源本身；该结果不能替代部署主机的系统 DNS 验证：
-
-```bash
-python scripts/probe_content_sources.py --doh-resolver
-```
-
-## 主要 Admin API
-
-| 能力 | 接口 |
-|---|---|
-| 总览 | `GET /api/dashboard/summary` |
-| 内容源 | `GET/POST /api/content-sources` |
-| 内容源更新/归档 | `PUT/DELETE /api/content-sources/{id}` |
-| 内容源排序 | `PATCH /api/content-sources/priorities` |
-| 内容源测试 | `POST /api/content-sources/{id}/test`、`POST /api/content-sources/test-all` |
-| 创建任务 | `POST /api/clockin/tasks` |
-| 任务列表/详情 | `GET /api/clockin/tasks`、`GET /api/clockin/tasks/{id}` |
-| 配置导出/导入 | `GET /api/config/export`、`POST /api/config/import` |
-| 健康检查 | `GET /health` |
-
-所有管理 API（登录和健康检查除外）都需要有效管理员会话。
-
-## 明确边界
-
-- 单管理员、50 个以内账号，不提供 RBAC。
-- 不允许内容源自定义请求方法、请求头、请求体、脚本或任意表达式。
-- 不支持内网内容源。
-- 不实施数据库静态加密。
-- 不重写 Git 历史。
-- Cloudflare Worker 单独部署并单独轮换 Token。
+- 主要 API（均需管理员会话，除登录和 `/health`）：`/api/dashboard/summary`、`/api/users`、`/api/records`、`/api/content-sources`、`/api/clockin/tasks`、`/api/worker-apis`、`/api/config/export|import`、`/health`。
 
 ## 许可证
 
