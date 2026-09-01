@@ -20,7 +20,7 @@ def test_export_filename_uses_beijing_calendar_date():
 
     utc_time = datetime(2026, 7, 31, 16, 30, tzinfo=timezone.utc)
 
-    assert build_config_export_filename(utc_time) == "zk-admin-config-2026-08-01.json"
+    assert build_config_export_filename(utc_time) == "zx-admin-config-2026-08-01.json"
 
 
 def create_test_app(db_session):
@@ -84,7 +84,7 @@ async def test_admin_api_responses_and_export_never_return_plaintext_secrets(db_
     assert exported.status_code == 200
     assert exported.json()["version"] == "2.0"
     assert exported.headers["content-disposition"].startswith(
-        'attachment; filename="zk-admin-config-'
+        'attachment; filename="zx-admin-config-'
     )
     assert exported.headers["content-disposition"].endswith('.json"')
     serialized = exported.text

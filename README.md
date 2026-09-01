@@ -1,12 +1,23 @@
 # ZX Auto Clock-in System
 
-ZX 是一个单管理员、多账号的自动打卡控制台。当前实现以 [`TianJiaJi/ZK-auto-clock-in-python`](https://github.com/TianJiaJi/ZK-auto-clock-in-python) 的 `main` 为基线，包含 FastAPI Admin、SQLite 数据库、原生浏览器后台和独立 Cloudflare Worker。
+ZX 是一个面向足下教育现代化学习平台的单管理员、多账号自动打卡控制台，包含 FastAPI Admin、SQLite 数据库、原生浏览器后台和独立的 Cloudflare Worker 执行器：Admin 负责账号、内容源与任务编排，Worker 负责与目标平台的打卡接口交互（首页、运动、日精进等）。
 
-本分支重点完成两件事：修复并可视化管理文字/图片内容源，以及彻底重做后台信息架构和交互。`ai.cqzuxia.com` 的登录、上传、首页、运动和日精进接口不在本轮修改范围内。
+内容源支持文字与图片的可视化管理，后台信息架构围绕五个一级页面组织。
+
+## ⚠️ 免责声明
+
+**本项目仅供技术学习、研究与交流用途。**
+
+- 本项目与足下教育（以及其他任何相关平台、组织）**没有任何关联**，亦未获得其任何形式的授权、支持或认可；
+- 使用者应遵守所在地区法律法规及目标平台的服务条款，**因下载、部署、使用或滥用本项目所产生的一切后果，均由使用者自行承担**；
+- 本项目按“现状”提供，不提供任何明示或默示的保证；
+- 如本项目侵犯了任何组织或个人的合法权益，请提交 Issue，我们将及时处理。
+
+继续使用本项目即视为已阅读并同意本声明。
 
 ## 安全提示
 
-用户已明确接受通过“公网 IP + HTTP”部署，但这种方式会让传输中的管理员口令、足下账号密码和 Worker Token 面临被窃听或篡改的风险。它不能被描述为安全生产入口；条件允许时应使用 HTTPS、VPN 或可信反向代理。
+若通过“公网 IP + HTTP”部署，传输中的管理员口令、足下账号密码和 Worker Token 会面临被窃听或篡改的风险，不能视为安全生产入口；条件允许时应使用 HTTPS、VPN 或可信反向代理。
 
 仓库不包含可用的固定 Worker Token。部署 Worker 时使用：
 
@@ -95,7 +106,7 @@ Browser Admin
 
 ```text
 .
-├── ZK-auto-clock-in-python/
+├── ZX-auto-clock-in-python/
 │   ├── app/
 │   │   ├── api/                 # FastAPI 路由
 │   │   ├── core/                # 数据库、安全与调度器
@@ -115,7 +126,7 @@ Browser Admin
 进入 Admin 目录并准备配置：
 
 ```bash
-cd ZK-auto-clock-in-python
+cd ZX-auto-clock-in-python
 cp .env.example .env
 mkdir -p database logs
 ```
@@ -145,14 +156,14 @@ curl http://127.0.0.1:8032/health
 
 访问 `http://服务器IP:8032/你的 ADMIN_PATH`。`./database` 与 `./logs` 会挂载进容器；`/health` 同时验证 Web 进程和 SQLite 查询能力。
 
-完整步骤、旧数据导入、持久化验证和回滚说明见 [Docker Compose 部署指南](ZK-auto-clock-in-python/docker-deploy-guide.md)。
+完整步骤、旧数据导入、持久化验证和回滚说明见 [Docker Compose 部署指南](ZX-auto-clock-in-python/docker-deploy-guide.md)。
 
 ## 本地开发
 
 需要 Python 3.11+ 和 Node.js 20+：
 
 ```bash
-cd ZK-auto-clock-in-python
+cd ZX-auto-clock-in-python
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -165,7 +176,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 ## 数据导入导出
 
-- `2.0` 普通导出使用 `zk-admin-config-YYYY-MM-DD.json` 文件名，不包含用户密码、Worker Token 或旧 `clockin_api_token`。
+- `2.0` 普通导出使用 `zx-admin-config-YYYY-MM-DD.json` 文件名，不包含用户密码、Worker Token 或旧 `clockin_api_token`。
 - 敏感字段编辑时留空表示保持原值。
 - 旧 `1.0` 文件可恢复明文密码和 Token，但导入响应及日志不会回显密钥。
 - 旧版批处理配置 `batch_size`、`batch_delay`、`parallel_tasks` 会正常导入，并在安全 `2.0` 导出中保留。
@@ -177,7 +188,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 普通自动化不访问真实打卡账号，也不会把第三方内容源的临时波动当作单元测试失败。
 
 ```bash
-cd ZK-auto-clock-in-python
+cd ZX-auto-clock-in-python
 python -m pytest -q
 python -m compileall -q app scripts
 node --test tests/frontend/*.test.mjs
@@ -193,7 +204,7 @@ docker compose config
 docker compose build
 ```
 
-发布前单独运行实时内容源探测；不要使用真实足下账号测试本轮明确排除的平台接口。
+发布前单独运行实时内容源探测；不要使用真实足下账号执行测试。
 
 ```bash
 python scripts/probe_content_sources.py

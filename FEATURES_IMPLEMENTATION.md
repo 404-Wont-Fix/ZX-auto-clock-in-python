@@ -4,7 +4,7 @@
 
 ### 1. ✅ 前端添加重试配置项
 
-**前端页面更新** ([app/ui/pages/index.html](d:\Github\ZK-auto-clock-in-python\ZK-auto-clock-in-python\app\ui\pages\index.html#L622-L665))
+**前端页面更新** ([app/ui/pages/index.html](d:\Github\ZX-auto-clock-in-python\ZX-auto-clock-in-python\app\ui\pages\index.html#L622-L665))
 - 在系统设置弹窗中添加了"打卡重试配置"卡片
 - 包含 4 个配置项：
   - 最大重试次数（0-10次，默认 3）
@@ -12,22 +12,22 @@
   - 请求超时时间（10-300秒，默认 60）
   - 频率限制额外延迟（5-120秒，默认 10）
 
-**JavaScript 更新** ([app/ui/assets/app.js](d:\Github\ZK-auto-clock-in-python\ZK-auto-clock-in-python\app\ui\assets\app.js))
+**JavaScript 更新** ([app/ui/assets/app.js](d:\Github\ZX-auto-clock-in-python\ZX-auto-clock-in-python\app\ui\assets\app.js))
 - `openConfigModal()`: 加载重试配置值
 - `saveConfig()`: 保存重试配置到数据库
 
-**后端 API 更新** ([app/api/config.py](d:\Github\ZK-auto-clock-in-python\ZK-auto-clock-in-python\app\api\config.py#L32-L40))
+**后端 API 更新** ([app/api/config.py](d:\Github\ZX-auto-clock-in-python\ZX-auto-clock-in-python\app\api\config.py#L32-L40))
 - `/api/config GET`: 添加重试配置的默认值返回
 - `/api/config PUT`: 支持保存重试配置
 
 ### 2. ✅ 定时任务测试按钮
 
-**前端添加** ([app/ui/pages/index.html](d:\Github\ZK-auto-clock-in-python\ZK-auto-clock-in-python\app\ui\pages\index.html#L702-L711))
+**前端添加** ([app/ui/pages/index.html](d:\Github\ZX-auto-clock-in-python\ZX-auto-clock-in-python\app\ui\pages\index.html#L702-L711))
 - 两个新按钮：
   - 🧪 测试定时任务：点击后测试调度器是否正常工作
   - 🔄 刷新状态：手动刷新调度器状态
 
-**JavaScript 实现** ([app/ui/assets/app.js](d:\Github\ZK-auto-clock-in-python\ZK-auto-clock-in-python\app\ui\assets\app.js#L1920-L1957))
+**JavaScript 实现** ([app/ui/assets/app.js](d:\Github\ZX-auto-clock-in-python\ZX-auto-clock-in-python\app\ui\assets\app.js#L1920-L1957))
 ```javascript
 async function testScheduleTask() {
     // 调用测试 API
@@ -36,18 +36,18 @@ async function testScheduleTask() {
 }
 ```
 
-**后端 API** ([app/api/config.py](d:\Github\ZK-auto-clock-in-python\ZK-auto-clock-in-python\app\api\config.py#L140-L193))
+**后端 API** ([app/api/config.py](d:\Github\ZX-auto-clock-in-python\ZX-auto-clock-in-python\app\api\config.py#L140-L193))
 - 新增 `POST /api/config/test-schedule` 端点
 - 等待 3 秒后返回调度器状态
 - 返回下次执行时间等信息
 
 ### 3. ✅ 倒计时显示下次执行时间
 
-**前端显示** ([app/ui/pages/index.html](d:\Github\ZK-auto-clock-in-python\ZK-auto-clock-in-python\app\ui\pages\index.html#L690-L695))
+**前端显示** ([app/ui/pages/index.html](d:\Github\ZX-auto-clock-in-python\ZX-auto-clock-in-python\app\ui\pages\index.html#L690-L695))
 - 在时间预览卡片中添加倒计时显示
 - 实时显示距离下次执行的剩余时间
 
-**JavaScript 实现** ([app/ui/assets/app.js](d:\Github\ZK-auto-clock-in-python\ZK-auto-clock-in-python\app\ui\assets\app.js#L1880-L1918))
+**JavaScript 实现** ([app/ui/assets/app.js](d:\Github\ZX-auto-clock-in-python\ZX-auto-clock-in-python\app\ui\assets\app.js#L1880-L1918))
 ```javascript
 // 全局变量存储下次执行时间
 let nextRunTime = null;

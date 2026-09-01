@@ -293,8 +293,8 @@ def test_production_rejects_missing_admin_username():
 def test_repository_contains_no_fixed_worker_token():
     root = Path(__file__).resolve().parents[2]
     sensitive_files = [
-        root / "ZK-auto-clock-in-python" / ".env.example",
-        root / "ZK-auto-clock-in-python" / "scripts" / "init_db.py",
+        root / "ZX-auto-clock-in-python" / ".env.example",
+        root / "ZX-auto-clock-in-python" / "scripts" / "init_db.py",
         root / "clockin-worker" / "wrangler.toml",
     ]
     exposed = "-".join(("35a59c73", "461e", "499d", "8421", "3311c289328e"))

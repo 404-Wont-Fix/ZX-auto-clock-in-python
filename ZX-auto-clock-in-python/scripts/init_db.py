@@ -65,7 +65,7 @@ async def init_default_config():
             default_configs = [
                 {
                     'key': 'clockin_api_url',
-                    'value': 'https://zk-clockin-executor.xxx.workers.dev',
+                    'value': 'https://zx-clockin-executor.xxx.workers.dev',
                     'description': '打卡 API 地址（后备方案）'
                 },
                 {
@@ -118,7 +118,7 @@ async def init_default_config():
 async def main():
     """主函数"""
     print("====================================")
-    print("ZK Admin - 数据库初始化")
+    print("ZX Admin - 数据库初始化")
     print("====================================")
     print()
 

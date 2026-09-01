@@ -1,4 +1,4 @@
-name = "zk-clockin-executor-api-2"
+name = "zx-clockin-executor-api-2"
 main = "worker.js"
 compatibility_date = "2026-02-24"
 

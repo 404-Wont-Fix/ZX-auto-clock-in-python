@@ -27,7 +27,7 @@ def build_config_export_filename(now: datetime | None = None) -> str:
     """生成与旧版后台一致、按北京时间标记日期的配置文件名。"""
     current_time = now or datetime.now(BEIJING_TIMEZONE)
     beijing_date = current_time.astimezone(BEIJING_TIMEZONE).date().isoformat()
-    return f"zk-admin-config-{beijing_date}.json"
+    return f"zx-admin-config-{beijing_date}.json"
 
 
 @router.get("", response_model=ConfigResponse)

@@ -1,12 +1,12 @@
 {
   "architecture_evidence_version": "1",
   "project": {
-    "name": "ZK-auto-clock-in-python",
+    "name": "ZX-auto-clock-in-python",
     "evidence_sources": [
       {
         "source_type": "other",
-        "location": "git:upstream/main@924e9d5",
-        "summary": "User-confirmed implementation baseline from TianJiaJi/ZK-auto-clock-in-python main."
+        "location": "git:main",
+        "summary": "User-confirmed implementation baseline of this repository's main branch."
       },
       {
         "source_type": "readme",
@@ -15,12 +15,12 @@
       },
       {
         "source_type": "code_reference",
-        "location": "ZK-auto-clock-in-python/app/main.py",
+        "location": "ZX-auto-clock-in-python/app/main.py",
         "summary": "FastAPI composition root wiring routers, static assets, database and scheduler lifecycle."
       },
       {
         "source_type": "dependency_config",
-        "location": "ZK-auto-clock-in-python/requirements.txt",
+        "location": "ZX-auto-clock-in-python/requirements.txt",
         "summary": "Defines the Python runtime dependencies used by Admin."
       }
     ],
@@ -34,7 +34,7 @@
   "modules": [
     {
       "module_id": "admin-ui",
-      "path_patterns": ["ZK-auto-clock-in-python/app/ui/**"],
+      "path_patterns": ["ZX-auto-clock-in-python/app/ui/**"],
       "responsibility": "Render the administration experience and consume authenticated FastAPI JSON APIs.",
       "architecture_type": "Presentation",
       "ownership": {
@@ -48,7 +48,7 @@
           "evidence_sources": [
             {
               "source_type": "call_graph",
-              "location": "ZK-auto-clock-in-python/app/ui/assets/js/core/api.js:14",
+              "location": "ZX-auto-clock-in-python/app/ui/assets/js/core/api.js:14",
               "summary": "The current browser data path uses the shared apiRequest adapter to call authenticated /api endpoints."
             }
           ]
@@ -61,7 +61,7 @@
           "evidence_sources": [
             {
               "source_type": "code_reference",
-              "location": "ZK-auto-clock-in-python/app/main.py",
+              "location": "ZX-auto-clock-in-python/app/main.py",
               "summary": "The server owns persistence and serves browser files across HTTP."
             }
           ]
@@ -71,23 +71,23 @@
         {
           "name": "Admin browser interface",
           "contract_type": "HTML CSS JavaScript UI",
-          "location": "ZK-auto-clock-in-python/app/ui/",
+          "location": "ZX-auto-clock-in-python/app/ui/",
           "stability": "internal",
           "evidence_sources": [
             {
               "source_type": "code_reference",
-              "location": "ZK-auto-clock-in-python/app/ui/pages/index.html",
+              "location": "ZX-auto-clock-in-python/app/ui/pages/index.html",
               "summary": "Single /dashboard SPA entry with Hash navigation and drawer markup."
             }
           ]
         }
       ],
       "data_boundaries": ["Authenticated /api JSON responses", "Browser-local route, filter and drawer state"],
-      "runtime_entries": ["ZK-auto-clock-in-python/app/ui/pages/index.html", "ZK-auto-clock-in-python/app/ui/assets/js/dashboard.js"],
+      "runtime_entries": ["ZX-auto-clock-in-python/app/ui/pages/index.html", "ZX-auto-clock-in-python/app/ui/assets/js/dashboard.js"],
       "evidence_sources": [
         {
           "source_type": "code_reference",
-          "location": "ZK-auto-clock-in-python/app/ui/pages/index.html",
+          "location": "ZX-auto-clock-in-python/app/ui/pages/index.html",
           "summary": "The current SPA loads local CSS and native ES modules without a production build chain or runtime component CDN."
         }
       ],
@@ -102,7 +102,7 @@
     },
     {
       "module_id": "admin-api",
-      "path_patterns": ["ZK-auto-clock-in-python/app/api/**", "ZK-auto-clock-in-python/app/main.py"],
+      "path_patterns": ["ZX-auto-clock-in-python/app/api/**", "ZX-auto-clock-in-python/app/main.py"],
       "responsibility": "Authenticate administrators and expose HTTP contracts for Admin application capabilities.",
       "architecture_type": "Application Adapter",
       "ownership": {
@@ -116,7 +116,7 @@
           "evidence_sources": [
             {
               "source_type": "import_graph",
-              "location": "ZK-auto-clock-in-python/app/api/clockin.py",
+              "location": "ZX-auto-clock-in-python/app/api/clockin.py",
               "summary": "Clockin routes import ClockinService and ActiveTaskService."
             }
           ]
@@ -127,7 +127,7 @@
           "evidence_sources": [
             {
               "source_type": "import_graph",
-              "location": "ZK-auto-clock-in-python/app/api/users.py",
+              "location": "ZX-auto-clock-in-python/app/api/users.py",
               "summary": "Routes depend on get_db, database Session and Pydantic request/response models."
             }
           ]
@@ -140,7 +140,7 @@
           "evidence_sources": [
             {
               "source_type": "code_reference",
-              "location": "ZK-auto-clock-in-python/app/main.py",
+              "location": "ZX-auto-clock-in-python/app/main.py",
               "summary": "The composition root serves static files while routers remain separate Python modules."
             }
           ]
@@ -150,12 +150,12 @@
         {
           "name": "Authenticated Admin API",
           "contract_type": "FastAPI JSON API",
-          "location": "ZK-auto-clock-in-python/app/api/",
+          "location": "ZX-auto-clock-in-python/app/api/",
           "stability": "internal",
           "evidence_sources": [
             {
               "source_type": "code_reference",
-              "location": "ZK-auto-clock-in-python/app/main.py:168",
+              "location": "ZX-auto-clock-in-python/app/main.py:168",
               "summary": "Composition root registers all Admin routers."
             }
           ]
@@ -166,7 +166,7 @@
       "evidence_sources": [
         {
           "source_type": "code_reference",
-          "location": "ZK-auto-clock-in-python/app/api/",
+          "location": "ZX-auto-clock-in-python/app/api/",
           "summary": "Thin FastAPI route modules define the current HTTP surface."
         }
       ],
@@ -181,7 +181,7 @@
     },
     {
       "module_id": "admin-services",
-      "path_patterns": ["ZK-auto-clock-in-python/app/services/**", "ZK-auto-clock-in-python/app/core/scheduler.py"],
+      "path_patterns": ["ZX-auto-clock-in-python/app/services/**", "ZX-auto-clock-in-python/app/core/scheduler.py"],
       "responsibility": "Orchestrate users, content providers, Worker calls, task progress, scheduling and health state.",
       "architecture_type": "Application Service",
       "ownership": {
@@ -195,7 +195,7 @@
           "evidence_sources": [
             {
               "source_type": "import_graph",
-              "location": "ZK-auto-clock-in-python/app/services/clockin_service.py",
+              "location": "ZX-auto-clock-in-python/app/services/clockin_service.py",
               "summary": "ClockinService imports database models and receives AsyncSession."
             }
           ]
@@ -206,7 +206,7 @@
           "evidence_sources": [
             {
               "source_type": "call_graph",
-              "location": "ZK-auto-clock-in-python/app/services/clockin_service.py:27",
+              "location": "ZX-auto-clock-in-python/app/services/clockin_service.py:27",
               "summary": "call_clockin_api builds and sends the Worker /clockin request."
             }
           ]
@@ -217,7 +217,7 @@
           "evidence_sources": [
             {
               "source_type": "code_reference",
-              "location": "ZK-auto-clock-in-python/app/services/poetry_service.py",
+              "location": "ZX-auto-clock-in-python/app/services/poetry_service.py",
               "summary": "Baseline provider integrations are hard-coded in PoetryService."
             }
           ]
@@ -230,7 +230,7 @@
           "evidence_sources": [
             {
               "source_type": "import_graph",
-              "location": "ZK-auto-clock-in-python/app/services/",
+              "location": "ZX-auto-clock-in-python/app/services/",
               "summary": "Baseline service imports contain no UI modules."
             }
           ]
@@ -240,7 +240,7 @@
         {
           "name": "Worker clockin request",
           "contract_type": "External HTTPS JSON request",
-          "location": "ZK-auto-clock-in-python/app/services/clockin_service.py:27",
+          "location": "ZX-auto-clock-in-python/app/services/clockin_service.py:27",
           "stability": "external",
           "evidence_sources": [
             {
@@ -256,12 +256,12 @@
       "evidence_sources": [
         {
           "source_type": "code_reference",
-          "location": "ZK-auto-clock-in-python/app/services/task_service.py",
+          "location": "ZX-auto-clock-in-python/app/services/task_service.py",
           "summary": "The persistent Task service is the shared orchestration contract for manual, per-user, failed-only and scheduled clockin tasks."
         },
         {
           "source_type": "code_reference",
-          "location": "ZK-auto-clock-in-python/app/core/scheduler.py",
+          "location": "ZX-auto-clock-in-python/app/core/scheduler.py",
           "summary": "Single-process APScheduler dispatches through the persistent task orchestrator and runs hourly content-source health probes."
         }
       ],
@@ -276,7 +276,7 @@
     },
     {
       "module_id": "admin-persistence",
-      "path_patterns": ["ZK-auto-clock-in-python/app/models/**", "ZK-auto-clock-in-python/app/core/database.py"],
+      "path_patterns": ["ZX-auto-clock-in-python/app/models/**", "ZX-auto-clock-in-python/app/core/database.py"],
       "responsibility": "Define SQLite models, validation schemas, engine and AsyncSession lifecycle.",
       "architecture_type": "Persistence Infrastructure",
       "ownership": {
@@ -291,7 +291,7 @@
           "evidence_sources": [
             {
               "source_type": "import_graph",
-              "location": "ZK-auto-clock-in-python/app/models/database.py",
+              "location": "ZX-auto-clock-in-python/app/models/database.py",
               "summary": "Database models depend on SQLAlchemy and the shared Base only."
             }
           ]
@@ -301,12 +301,12 @@
         {
           "name": "Admin SQLite schema",
           "contract_type": "SQLAlchemy model schema",
-          "location": "ZK-auto-clock-in-python/app/models/database.py",
+          "location": "ZX-auto-clock-in-python/app/models/database.py",
           "stability": "internal",
           "evidence_sources": [
             {
               "source_type": "code_reference",
-              "location": "ZK-auto-clock-in-python/app/core/database.py:48",
+              "location": "ZX-auto-clock-in-python/app/core/database.py:48",
               "summary": "init_db creates all registered metadata tables without migrations."
             }
           ]
@@ -317,7 +317,7 @@
       "evidence_sources": [
         {
           "source_type": "code_reference",
-          "location": "ZK-auto-clock-in-python/app/models/database.py",
+          "location": "ZX-auto-clock-in-python/app/models/database.py",
           "summary": "Defines the current User, ClockinResult, DailySummary, Task, ContentSource, Config, Session and WorkerApi tables."
         }
       ],

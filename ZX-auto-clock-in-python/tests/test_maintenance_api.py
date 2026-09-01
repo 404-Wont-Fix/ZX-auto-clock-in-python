@@ -68,7 +68,7 @@ async def test_backup_uses_sqlite_snapshot_in_persistent_database_directory(
     tmp_path,
     monkeypatch,
 ):
-    database_file = tmp_path / "zk_admin.db"
+    database_file = tmp_path / "zx_admin.db"
     with sqlite3.connect(database_file) as connection:
         connection.execute("CREATE TABLE backup_probe (value TEXT NOT NULL)")
         connection.execute("INSERT INTO backup_probe VALUES ('consistent')")

@@ -6,17 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a monorepo containing two projects:
 
-1. **`ZK-auto-clock-in-python/`** - Python Admin (FastAPI backend)
+1. **`ZX-auto-clock-in-python/`** - Python Admin (FastAPI backend)
 2. **`clockin-worker/`** - Cloudflare Worker (clockin executor)
 
 Most work will be in the Python Admin directory.
 
 ## Common Commands (Python Admin)
 
-All commands below require being in the `ZK-auto-clock-in-python/` directory:
+All commands below require being in the `ZX-auto-clock-in-python/` directory:
 
 ```bash
-cd ZK-auto-clock-in-python
+cd ZX-auto-clock-in-python
 ```
 
 ### Development Setup
@@ -201,7 +201,7 @@ This prevents duplicate processing and provides visibility into system state.
 
 ### External Dependencies
 
-- **clockin-worker API**: External service that actually performs the clockin on 精夏平台
+- **clockin-worker API**: External service that actually performs the clockin on 足下平台
   - URL: `CLOCKIN_API_URL` from `.env`
   - Auth: Bearer token in `Authorization` header
   - Request: `{username, password, clockin_type, options: {...}}`
@@ -260,15 +260,15 @@ The `WorkerApi.to_dict()` returns:
 
 | Purpose | Location |
 |---------|----------|
-| API Routes | `ZK-auto-clock-in-python/app/api/*.py` |
-| Business Logic | `ZK-auto-clock-in-python/app/services/*.py` |
-| DB Models | `ZK-auto-clock-in-python/app/models/database.py` |
-| Pydantic Schemas | `ZK-auto-clock-in-python/app/models/schemas.py` |
-| Static Files | `ZK-auto-clock-in-python/app/ui/` |
-| Utility Scripts | `ZK-auto-clock-in-python/scripts/*.py` |
-| Database | `ZK-auto-clock-in-python/database/zk_admin.db` |
-| Logs | `ZK-auto-clock-in-python/logs/*.log` |
-| Environment | `ZK-auto-clock-in-python/.env` |
+| API Routes | `ZX-auto-clock-in-python/app/api/*.py` |
+| Business Logic | `ZX-auto-clock-in-python/app/services/*.py` |
+| DB Models | `ZX-auto-clock-in-python/app/models/database.py` |
+| Pydantic Schemas | `ZX-auto-clock-in-python/app/models/schemas.py` |
+| Static Files | `ZX-auto-clock-in-python/app/ui/` |
+| Utility Scripts | `ZX-auto-clock-in-python/scripts/*.py` |
+| Database | `ZX-auto-clock-in-python/database/zx_admin.db` |
+| Logs | `ZX-auto-clock-in-python/logs/*.log` |
+| Environment | `ZX-auto-clock-in-python/.env` |
 
 ## Frontend Architecture
 
@@ -387,7 +387,7 @@ When modifying database:
 
 The `clockin-worker/` directory contains a Cloudflare Worker that:
 - Receives clockin requests from Python Admin
-- Performs actual HTTP requests to 精夏平台
+- Performs actual HTTP requests to 足下平台
 - Returns results back to Python Admin
 
 Key files:

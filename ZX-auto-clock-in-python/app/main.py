@@ -32,7 +32,7 @@ logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动
-    logger.info("=== ZK Admin 启动中 ===")
+    logger.info("=== ZX Admin 启动中 ===")
     logger.info(f"环境: {settings.app_env}")
     logger.info(f"调试模式: {settings.debug}")
 
@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # 关闭
-    logger.info("=== ZK Admin 关闭中 ===")
+    logger.info("=== ZX Admin 关闭中 ===")
 
     # 清理活动任务（防止任务泄漏）
     try:
@@ -80,8 +80,8 @@ async def lifespan(app: FastAPI):
 
 # 创建 FastAPI 应用
 app = FastAPI(
-    title="ZK Admin",
-    description="ZK 多用户自动打卡管理系统",
+    title="ZX Admin",
+    description="ZX 多用户自动打卡管理系统",
     version="2.0.0",
     lifespan=lifespan
 )
@@ -226,7 +226,7 @@ async def health_check(db=Depends(get_db)):
         raise HTTPException(status_code=503, detail="service unavailable") from exc
     return {
         "status": "healthy",
-        "service": "zk-admin",
+        "service": "zx-admin",
         "version": "2.0.0",
         "database": "ready",
     }

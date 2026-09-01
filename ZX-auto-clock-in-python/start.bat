@@ -2,7 +2,7 @@
 REM Windows 快速启动脚本
 
 echo ====================================
-echo ZK Admin - 快速启动
+echo ZX Admin - 快速启动
 echo ====================================
 echo.
 
@@ -18,7 +18,7 @@ REM 激活虚拟环境
 call venv\Scripts\activate.bat
 
 REM 检查数据库
-if not exist "database\zk_admin.db" (
+if not exist "database\zx_admin.db" (
     echo [初始化] 数据库不存在，正在初始化...
     python scripts/init_db.py
     if errorlevel 1 (

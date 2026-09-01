@@ -1,7 +1,7 @@
 {
-  "name": "zk-clockin-executor",
+  "name": "zx-clockin-executor",
   "version": "1.0.0",
-  "description": "ZK Clockin Executor - 打卡执行器 Worker",
+  "description": "ZX Clockin Executor - 打卡执行器 Worker",
   "main": "worker.js",
   "scripts": {
     "dev": "wrangler dev --port 8787 --local",

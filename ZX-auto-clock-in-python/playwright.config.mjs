@@ -37,7 +37,7 @@ export default defineConfig({
       "ADMIN_USERNAME=e2e-admin",
       "ADMIN_PASSWORD=e2e-admin-password",
       "ADMIN_PATH=e2e-admin",
-      "DATABASE_URL=sqlite:////tmp/zk-admin-playwright.db",
+      "DATABASE_URL=sqlite:////tmp/zx-admin-playwright.db",
       "SCHEDULE_ENABLED=false",
       python,
       "-m uvicorn app.main:app --host 127.0.0.1 --port 18033 --workers 1",

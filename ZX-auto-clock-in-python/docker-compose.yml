@@ -1,7 +1,7 @@
 services:
-  zk-admin:
+  zx-admin:
     build: .
-    container_name: zk-admin
+    container_name: zx-admin
     restart: unless-stopped
     init: true
     env_file:

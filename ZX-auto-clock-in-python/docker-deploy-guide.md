@@ -1,19 +1,19 @@
 # Docker Compose 部署指南
 
-本文档对应 ZX Admin 2.0，基线来自 `TianJiaJi/ZK-auto-clock-in-python` 的 `main`。Compose 只启动一个 Uvicorn 进程，由该进程唯一持有 APScheduler 和进程内后台任务。
+本文档对应 ZX Admin 2.0。Compose 只启动一个 Uvicorn 进程，由该进程唯一持有 APScheduler 和进程内后台任务。
 
 ## 先确认安全边界
 
-用户已明确接受通过“公网 IP + HTTP”访问后台，但这会让传输中的管理员口令、足下账号密码和 Worker Token 等凭据面临被窃听或篡改的风险。此方式不能视为安全生产入口，只适合你已理解并接受风险的受控环境。能配置域名和 TLS 时，应优先使用 HTTPS、VPN 或可信反向代理。
+若通过“公网 IP + HTTP”访问后台，传输中的管理员口令、足下账号密码和 Worker Token 等凭据会面临被窃听或篡改的风险，不能视为安全生产入口。能配置域名和 TLS 时，应优先使用 HTTPS、VPN 或可信反向代理。
 
-本轮不修改 `ai.cqzuxia.com` 的登录、上传、首页、运动或日精进接口，也不要用真实打卡账号做发布探测。
+发布探测不要使用真实打卡账号。
 
 ## 准备环境
 
 需要 Docker Engine 与 Docker Compose v2。进入 Python Admin 目录：
 
 ```bash
-cd ZK-auto-clock-in-python
+cd ZX-auto-clock-in-python
 cp .env.example .env
 mkdir -p database logs
 ```
@@ -27,7 +27,7 @@ SECRET_KEY=替换为足够长的随机值
 ADMIN_USERNAME=替换为非空管理员名
 ADMIN_PASSWORD=替换为强密码
 ADMIN_PATH=替换为不易猜测的后台入口路径
-DATABASE_URL=sqlite:///database/zk_admin.db
+DATABASE_URL=sqlite:///database/zx_admin.db
 ```
 
 生产模式会拒绝默认 `SECRET_KEY`、空管理员名以及空密码或 `admin` 密码。`.env` 不会复制进镜像，也不应提交到 Git。
@@ -41,7 +41,7 @@ docker compose config
 docker compose build
 docker compose up -d
 docker compose ps
-docker compose logs -f zk-admin
+docker compose logs -f zx-admin
 ```
 
 Compose 使用以下运行约束：
@@ -56,7 +56,7 @@ Compose 使用以下运行约束：
 
 ```bash
 curl http://127.0.0.1:8032/health
-docker inspect --format '{{.State.Health.Status}}' zk-admin
+docker inspect --format '{{.State.Health.Status}}' zx-admin
 ```
 
 健康响应应包含 `"status":"healthy"` 和 `"database":"ready"`。后台入口不是 `/dashboard`，请访问：
@@ -76,24 +76,24 @@ http://服务器IP:8032/你的 ADMIN_PATH
 3. 导入完成后立即安全删除旧文件。
 4. 对曾提交、共享或暴露过的 Worker Token 进行轮换。
 
-新版 `2.0` 普通导出使用 `zk-admin-config-YYYY-MM-DD.json` 文件名，不含用户密码或 Worker Token，适合日常保存非敏感配置，但不能独立恢复这些密钥；在全新数据库上仍需重新输入缺失的密码和 Token。旧版 `batch_size`、`batch_delay`、`parallel_tasks` 会在导入后保留，并继续出现在安全导出中。
+新版 `2.0` 普通导出使用 `zx-admin-config-YYYY-MM-DD.json` 文件名，不含用户密码或 Worker Token，适合日常保存非敏感配置，但不能独立恢复这些密钥；在全新数据库上仍需重新输入缺失的密码和 Token。旧版 `batch_size`、`batch_delay`、`parallel_tasks` 会在导入后保留，并继续出现在安全导出中。
 
 ## 验证数据库持久化
 
 先确认健康状态，再重启容器：
 
 ```bash
-docker compose exec zk-admin python scripts/check_db.py
-docker compose restart zk-admin
+docker compose exec zx-admin python scripts/check_db.py
+docker compose restart zx-admin
 docker compose ps
-docker compose exec zk-admin python scripts/check_db.py
+docker compose exec zx-admin python scripts/check_db.py
 curl http://127.0.0.1:8032/health
 ```
 
-重启前后都应能读取同一 `./database/zk_admin.db`。备份时保留宿主机文件：
+重启前后都应能读取同一 `./database/zx_admin.db`。备份时保留宿主机文件：
 
 ```bash
-docker compose exec zk-admin python scripts/backup_db.py
+docker compose exec zx-admin python scripts/backup_db.py
 ```
 
 不要用 `docker compose down -v` 作为常规操作。当前 Compose 使用宿主机目录挂载，但任何清理命令执行前都应先确认备份。
@@ -115,7 +115,7 @@ npx wrangler deploy
 更新前先备份数据库，然后重新构建：
 
 ```bash
-docker compose exec zk-admin python scripts/backup_db.py
+docker compose exec zx-admin python scripts/backup_db.py
 git pull --ff-only
 docker compose up -d --build
 docker compose ps
@@ -129,7 +129,7 @@ curl http://127.0.0.1:8032/health
 ### 容器启动后立即退出
 
 ```bash
-docker compose logs --tail=200 zk-admin
+docker compose logs --tail=200 zx-admin
 ```
 
 优先检查 `.env` 是否仍使用默认安全配置。Compose 固定以 `APP_ENV=production` 启动，因此弱默认值会按设计拒绝启动。
@@ -143,7 +143,7 @@ docker compose up -d --force-recreate
 ### 健康状态为 unhealthy
 
 ```bash
-docker compose logs --tail=200 zk-admin
+docker compose logs --tail=200 zx-admin
 ls -la database logs
 curl -i http://127.0.0.1:8032/health
 ```

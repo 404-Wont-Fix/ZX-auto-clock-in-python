@@ -88,7 +88,7 @@ async def backup_database(
         backup_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        backup_file = backup_dir / f"zk_admin_{timestamp}.db"
+        backup_file = backup_dir / f"zx_admin_{timestamp}.db"
 
         if not db_file.is_file():
             raise HTTPException(

@@ -9,7 +9,7 @@ from datetime import datetime
 def backup_database():
     """备份数据库"""
     # 数据库文件路径
-    db_file = "database/zk_admin.db"
+    db_file = "database/zx_admin.db"
 
     if not os.path.exists(db_file):
         print(f"[错误] 数据库文件不存在: {db_file}")
@@ -21,7 +21,7 @@ def backup_database():
 
     # 备份文件名
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_file = f"{backup_dir}/zk_admin_{timestamp}.db"
+    backup_file = f"{backup_dir}/zx_admin_{timestamp}.db"
 
     # 复制文件
     try:
@@ -40,7 +40,7 @@ def backup_database():
 
 if __name__ == '__main__':
     print("====================================")
-    print("ZK Admin - 数据库备份")
+    print("ZX Admin - 数据库备份")
     print("====================================")
     print()
 

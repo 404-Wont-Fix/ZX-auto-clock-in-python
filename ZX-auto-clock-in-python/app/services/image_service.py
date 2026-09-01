@@ -121,7 +121,7 @@ class ImageService:
                         # 5. 转换为 base64（直接嵌入到请求中）
                         jpeg_base64 = base64.b64encode(jpeg_bytes).decode('utf-8')
 
-                        # 限制 base64 大小（精夏平台可能有大小限制）
+                        # 限制 base64 大小（足下平台可能有大小限制）
                         max_size = 2 * 1024 * 1024  # 2MB
                         if jpeg_size > max_size:
                             # 如果太大，降低质量重新压缩

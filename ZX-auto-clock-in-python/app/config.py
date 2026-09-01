@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     )
 
     # 应用基础配置
-    app_name: str = "ZK Admin"
+    app_name: str = "ZX Admin"
     app_env: str = "development"  # development / production
     debug: bool = False
     secret_key: str = "change-this-secret-key-in-production"
@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     admin_path: str = "admin"  # 设置为自定义路径，如 "my-secret-admin"
 
     # 数据库配置
-    database_url: str = "sqlite:///database/zk_admin.db"
+    database_url: str = "sqlite:///database/zx_admin.db"
 
     # clockin-worker 配置
     # 注意：真实 token 必须在 .env 中配置，且与 worker 端 API_TOKEN 保持一致；

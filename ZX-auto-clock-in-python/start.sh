@@ -2,7 +2,7 @@
 # Linux/Mac 快速启动脚本
 
 echo "===================================="
-echo "ZK Admin - 快速启动"
+echo "ZX Admin - 快速启动"
 echo "===================================="
 echo ""
 
@@ -17,7 +17,7 @@ fi
 source venv/bin/activate
 
 # 检查数据库
-if [ ! -f "database/zk_admin.db" ]; then
+if [ ! -f "database/zx_admin.db" ]; then
     echo "[初始化] 数据库不存在，正在初始化..."
     python scripts/init_db.py
     if [ $? -ne 0 ]; then

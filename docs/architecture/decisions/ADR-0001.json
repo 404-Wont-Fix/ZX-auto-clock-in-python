@@ -13,12 +13,12 @@
     },
     {
       "source_type": "code_reference",
-      "location": "ZK-auto-clock-in-python/app/models/database.py",
+      "location": "ZX-auto-clock-in-python/app/models/database.py",
       "summary": "The baseline already contains Task and WorkerApi models but no ContentSource model."
     },
     {
       "source_type": "code_reference",
-      "location": "ZK-auto-clock-in-python/app/ui/pages/index.html",
+      "location": "ZX-auto-clock-in-python/app/ui/pages/index.html",
       "summary": "The baseline already contains a sidebar, Hash navigation and drawers but loads Tailwind and DaisyUI from CDN."
     },
     {
@@ -121,13 +121,13 @@
     "files": [
       "docs/superpowers/specs/2026-07-31-admin-redesign-content-sources-design.md",
       "docs/architecture/architecture-evidence.json",
-      "ZK-auto-clock-in-python/app/models/database.py",
-      "ZK-auto-clock-in-python/app/services/task_service.py",
-      "ZK-auto-clock-in-python/app/services/poetry_service.py",
-      "ZK-auto-clock-in-python/app/ui/pages/index.html"
+      "ZX-auto-clock-in-python/app/models/database.py",
+      "ZX-auto-clock-in-python/app/services/task_service.py",
+      "ZX-auto-clock-in-python/app/services/poetry_service.py",
+      "ZX-auto-clock-in-python/app/ui/pages/index.html"
     ],
     "modules": ["admin-ui", "admin-api", "admin-services", "admin-persistence", "clockin-worker"],
-    "tests": ["ZK-auto-clock-in-python/tests", "tests/frontend", "tests/e2e"],
+    "tests": ["ZX-auto-clock-in-python/tests", "tests/frontend", "tests/e2e"],
     "adrs": []
   }
 }

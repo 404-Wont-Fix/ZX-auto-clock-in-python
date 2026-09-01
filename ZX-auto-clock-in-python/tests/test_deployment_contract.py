@@ -39,9 +39,9 @@ def test_deployment_guide_documents_fresh_database_import_and_http_residual_risk
 def test_secret_env_and_database_backups_are_ignored_by_git():
     repository_root = PROJECT_ROOT.parent
     for relative_path in (
-        "ZK-auto-clock-in-python/.env",
-        "ZK-auto-clock-in-python/.env.production",
-        "ZK-auto-clock-in-python/database/backups/zk_admin_test.db",
+        "ZX-auto-clock-in-python/.env",
+        "ZX-auto-clock-in-python/.env.production",
+        "ZX-auto-clock-in-python/database/backups/zx_admin_test.db",
     ):
         result = subprocess.run(
             ["git", "check-ignore", "--no-index", "--quiet", relative_path],
@@ -50,7 +50,7 @@ def test_secret_env_and_database_backups_are_ignored_by_git():
         assert result.returncode == 0, f"未忽略敏感文件: {relative_path}"
 
     example = subprocess.run(
-        ["git", "check-ignore", "--no-index", "--quiet", "ZK-auto-clock-in-python/.env.example"],
+        ["git", "check-ignore", "--no-index", "--quiet", "ZX-auto-clock-in-python/.env.example"],
         cwd=repository_root,
     )
     assert example.returncode == 1
@@ -59,7 +59,8 @@ def test_secret_env_and_database_backups_are_ignored_by_git():
 def test_readme_describes_the_current_main_based_admin_architecture():
     readme = PROJECT_ROOT.parent.joinpath("README.md").read_text(encoding="utf-8")
 
-    assert "TianJiaJi/ZK-auto-clock-in-python" in readme
+    assert "免责声明" in readme
+    assert "足下" in readme
     assert all(page in readme for page in ("总览", "用户", "打卡记录", "内容源", "系统设置"))
     assert "原生 HTML/CSS/ES Modules" in readme
     assert "单个 Uvicorn 进程" in readme

@@ -2,9 +2,9 @@
 
 ## 基线与命名
 
-- 实现基线固定为 `TianJiaJi/ZK-auto-clock-in-python` 的 `main`，本规格复核时对应提交 `924e9d5`。
+- 实现基线为本仓库 `main` 分支。
 - 开发分支为 `codex/admin-redesign-content-sources`；用户 fork 的 `master` 仅保留作旧基线，不参与实现。
-- 仓库目录仍使用 `ZK-auto-clock-in-python`，界面产品名沿用上游当前的 `ZX`；本规格中的 Admin 均指同一后台。
+- 仓库目录仍使用 `ZX-auto-clock-in-python`，界面产品名沿用上游当前的 `ZX`；本规格中的 Admin 均指同一后台。
 - 用户自有的未跟踪文件不属于本次变更。
 
 ## 目标与边界
